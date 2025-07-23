@@ -35,7 +35,9 @@ void loopNetwork() {
     switch (networkStatus) {
         case NetworkStatus::CONNECTING_WIFI:
             if (WiFi.status() == WL_CONNECTED) {
-                Serial.println("WiFi Connected.");
+                Serial.println("WiFi Connected!");
+                Serial.print("IP Address: ");
+                Serial.println(WiFi.localIP());
                 networkStatus = NetworkStatus::SYNCING_NTP;
                 network_timeout_start = millis();
                 configTime(0, 0, "pool.ntp.org");
@@ -51,6 +53,7 @@ void loopNetwork() {
                 if (getLocalTime(&timeinfo)) {
                     Serial.println("NTP Sync successful.");
                     networkStatus = NetworkStatus::CONNECTED;
+                    Serial.println("Network setup complete - Web server should be accessible now!");
                 } else if (millis() - network_timeout_start > 5000) {
                     Serial.println("NTP Sync failed.");
                     networkStatus = NetworkStatus::DISCONNECTED;

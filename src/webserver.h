@@ -3,5 +3,6 @@
 
 void setupWebServer();
 void stopWebServer();
- 
+void handleWebServer();
+
 #endif // WEBSERVER_H 

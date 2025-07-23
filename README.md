@@ -44,26 +44,26 @@ A minimalist, standalone meditation aid that guides breathing sessions over conf
 - ✅ **Short Press:** Cycles through round count (1→2→3→4→5→1...)
 - ✅ **Long Press (2+ seconds):** Starts meditation session
 - ✅ **Feedback:** Vibration pulses equal to selected round count
-- ⏳ **Auto Sleep:** Deep sleep after 3 minutes of inactivity
+- ✅ **Auto Sleep:** Deep sleep after 3 minutes of inactivity
 - ⏳ **Wake-up:** Any button press wakes device from deep sleep
 
 #### **Session Flow**
 Each round consists of three phases:
 
 1. **Deep Breathing Phase**
-   - ⏳ Default: 30 seconds (configurable)
-   - ⏳ Vibration: Round number pulses at start
-   - ⏳ **End Options:** Button press OR automatic timeout
+   - ✅ Default: 30 seconds (configurable)
+   - ✅ Vibration: Round number pulses at start
+   - ✅ **End Options:** Button press OR automatic timeout
    - ⏳ **Timeout Signal:** Long vibration pulse
 
 2. **Breath Hold Phase**
-   - ⏳ User-controlled duration
-   - ⏳ Vibration: Short pulse at start
-   - ⏳ **End:** Button press (duration logged)
+   - ✅ User-controlled duration
+   - ✅ Vibration: Short pulse at start
+   - ✅ **End:** Button press (duration logged)
 
 3. **Recovery Phase**
-   - ⏳ Default: 10 seconds (configurable)
-   - ⏳ Vibration: Short pulse at start
+   - ✅ Default: 10 seconds (configurable)
+   - ✅ Vibration: Short pulse at start
    - ⏳ **End Options:** Button press OR automatic timeout
    - ⏳ **Timeout Signal:** Long vibration pulse
 
@@ -156,18 +156,20 @@ Current round count is adjustable via button interface (1-5 rounds).
 
 ## Roadmap
 
-### 🔄 **Web Interface** (Temporarily Disabled)
-The original specification included a full web configuration interface. This was temporarily disabled to prioritize core functionality stability. **Planned features:**
+### 🔄 **Web Interface** (In Development)
+The web configuration interface is currently being implemented. The device will display the IP address when connected to WiFi. **Planned features:**
 
 - 🔄 **Configuration Page:** Adjust all timing parameters via web browser
-- 🔄 **Session Review:** Calendar view of last 4 weeks with session indicators
+- 🔄 **Session Review:** View and download session logs in readable format
 - 🔄 **Log Download:** JSON export of complete session history
 - 🔄 **Settings Management:**
-  - 🔄 Deep breathing phase duration
-  - 🔄 Recovery phase duration
-  - 🔄 Silent reminder settings
-  - 🔄 Idle timeout configuration
-  - 🔄 Maximum rounds setting
+  - 🔄 Deep breathing phase duration (10-300 seconds)
+  - 🔄 Recovery phase duration (5-120 seconds)
+  - 🔄 Silent reminder settings (enable/disable and interval)
+  - 🔄 Idle timeout configuration (1-60 minutes)
+  - 🔄 Maximum rounds setting (1-10 rounds)
+
+**Current Status:** Core meditation functionality is fully working. Web interface will be added in the next update using a more compatible web server library.
 
 ### 🔄 **Multiple Breathing Modes**
 The architecture supports additional breathing patterns:

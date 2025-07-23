@@ -1,0 +1,6 @@
+# PlatformIO
+.pio/
+.vscode/
+
+# Ignore secrets file
+src/secrets.h

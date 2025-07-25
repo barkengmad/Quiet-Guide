@@ -39,36 +39,48 @@ String getStatusString() {
 
 String getTrainingDescription() {
     SessionState state = getCurrentState();
+    AppConfig config = loadConfig();
     switch (state) {
         case SessionState::IDLE:
             return "<h3>🏠 IDLE - Ready to Begin</h3>"
-                   "<p><strong>What's happening:</strong> The device is ready for meditation. Use short button presses to select your desired number of rounds (1-10).</p>"
+                   "<p><strong>What's happening:</strong> The device is ready for meditation. Use short button presses to select your desired number of rounds (1-" + String(config.maxRounds) + ").</p>"
                    "<p><strong>Why it matters:</strong> Choosing the right number of rounds helps build your breath-holding capacity gradually. Start with fewer rounds and increase as you improve.</p>"
                    "<p><strong>Next phase:</strong> Long press the button to start your breathing session with the selected rounds.</p>";
                    
         case SessionState::DEEP_BREATHING:
-            return "<h3>🫁 DEEP BREATHING - Oxygenate Your Body</h3>"
+            return "<h3>🫁 DEEP BREATHING - Round " + String(getCurrentSessionRound()) + " of " + String(getTotalRounds()) + "</h3>"
                    "<p><strong>What's happening:</strong> Take deep, controlled breaths to saturate your blood with oxygen. Breathe in through your nose, out through your mouth.</p>"
                    "<p><strong>Why it matters:</strong> This hyperventilation phase increases oxygen levels and decreases CO2, preparing your body for the breath hold. It triggers physiological changes that improve breath-holding capacity.</p>"
-                   "<p><strong>Next phase:</strong> When you feel fully oxygenated (tingling, slight dizziness is normal), short press to move to breath hold.</p>";
+                   "<p><strong>Next phase:</strong> This will automatically proceed after " + String(config.deepBreathingSeconds) + "s with a long vibration, or when you feel fully oxygenated (tingling, slight dizziness is normal), short press. <strong>When proceeding: breathe out completely and hold your breath</strong> - this starts the breath hold phase immediately.</p>";
                    
         case SessionState::BREATH_HOLD:
-            return "<h3>🛑 BREATH HOLD - The Main Event</h3>"
-                   "<p><strong>What's happening:</strong> Hold your breath after a final exhale. Stay relaxed, don't force it. Your body will signal when it's time to breathe.</p>"
+            return "<h3>🛑 BREATH HOLD - Round " + String(getCurrentSessionRound()) + " of " + String(getTotalRounds()) + "</h3>"
+                   "<p><strong>What's happening:</strong> You are now holding your breath after exhaling completely. Stay relaxed, don't force it. Your body will signal when it's time to breathe.</p>"
                    "<p><strong>Why it matters:</strong> This activates your mammalian dive reflex, trains CO2 tolerance, and builds mental resilience. It's where the real benefits of the Wim Hof method occur.</p>"
-                   "<p><strong>Next phase:</strong> When you feel the urge to breathe, take a deep breath and short press to start recovery.</p>";
+                   "<p><strong>Next phase:</strong> Trust your body - it will tell you when it's time to breathe. When you feel the urge, try to hold for a few seconds more, then take a deep breath in, hold it for 10-15 seconds, and short press to start the recovery phase. Everyone is different, and with practice you'll be able to hold for longer.</p>";
                    
-        case SessionState::RECOVERY:
-            return "<h3>💨 RECOVERY - Integration Breath</h3>"
-                   "<p><strong>What's happening:</strong> Take a deep breath in and hold for 10-15 seconds, then exhale slowly. This is your recovery breath.</p>"
+        case SessionState::RECOVERY: {
+            int currentRound = getCurrentSessionRound();
+            int totalRounds = getTotalRounds();
+            String nextPhaseInfo;
+            
+            if (currentRound < totalRounds) {
+                nextPhaseInfo = "This will automatically proceed after " + String(config.recoverySeconds) + "s with a long vibration, or short press when ready. <strong>Next: Round " + String(currentRound + 1) + " will start with " + String(currentRound + 1) + " short buzzes</strong> to indicate the round number.";
+            } else {
+                nextPhaseInfo = "This will automatically proceed after " + String(config.recoverySeconds) + "s with a long vibration, or short press when ready. <strong>Next: Silent meditation will start with one long buzz</strong> to indicate the final phase.";
+            }
+            
+            return "<h3>💨 RECOVERY - Round " + String(currentRound) + " of " + String(totalRounds) + "</h3>"
+                   "<p><strong>What's happening:</strong> You are holding a deep recovery breath for 10-15 seconds. When ready, exhale slowly and relax.</p>"
                    "<p><strong>Why it matters:</strong> This phase helps integrate the physiological changes from the breath hold and prepares you for the next round (or silent phase if finished).</p>"
-                   "<p><strong>Next phase:</strong> Short press when ready to continue to the next round, or enter silent meditation if this was your final round.</p>";
+                   "<p><strong>Next phase:</strong> " + nextPhaseInfo + "</p>";
+        }
                    
         case SessionState::SILENT:
-            return "<h3>🧘 SILENT MEDITATION - Inner Awareness</h3>"
-                   "<p><strong>What's happening:</strong> Enjoy the heightened state of awareness after your breathing rounds. Meditate in silence, observing your inner experience.</p>"
+            return "<h3>🧘 SILENT MEDITATION - Final Phase</h3>"
+                   "<p><strong>What's happening:</strong> Enjoy the heightened state of awareness after completing " + String(getTotalRounds()) + " breathing rounds. Meditate in silence, observing your inner experience.</p>"
                    "<p><strong>Why it matters:</strong> This phase allows you to experience the full benefits of the practice - increased focus, calmness, and bodily awareness that follows the breathing technique.</p>"
-                   "<p><strong>Next phase:</strong> Stay as long as feels right, or short press when ready to end your session and return to idle.</p>";
+                   "<p><strong>Next phase:</strong> Stay as long as feels right (maximum " + String(config.silentPhaseMaxMinutes) + " minutes), or short press when ready to end your session and return to idle.</p>";
                    
         case SessionState::BOOTING:
             return "<h3>⚡ STARTING UP - System Initialization</h3>"

@@ -14,5 +14,7 @@ void setupSession();
 void loopSession();
 void finishBooting();
 SessionState getCurrentState();
+int getCurrentSessionRound();
+int getTotalRounds();
 
 #endif // SESSION_H 

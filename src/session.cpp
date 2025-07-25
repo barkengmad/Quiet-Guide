@@ -384,6 +384,14 @@ SessionState getCurrentState() {
     return currentState;
 }
 
+int getCurrentSessionRound() {
+    return current_session_round;
+}
+
+int getTotalRounds() {
+    return config.currentRound;
+}
+
 void finishBooting() {
     if (currentState == SessionState::BOOTING) {
         enterState(SessionState::IDLE);

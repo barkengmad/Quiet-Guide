@@ -176,7 +176,12 @@ String generateHTML(String title, String content) {
 
 void handleClient(WiFiClient& client) {
     String request = client.readStringUntil('\r');
-    client.flush();
+    
+    // Don't flush for POST requests - we need the body data!
+    bool isPostRequest = request.indexOf("POST") >= 0;
+    if (!isPostRequest) {
+        client.flush();
+    }
     
     String response = "";
     
@@ -225,23 +230,105 @@ void handleClient(WiFiClient& client) {
     } else if (request.indexOf("POST /save") >= 0) {
         // Save configuration
         AppConfig config = loadConfig();
+        Serial.println("DEBUG: POST /save request received");
+        Serial.println("DEBUG: Full request: " + request);
+        
+        // Read headers until we find the blank line, then read body
         String body = "";
         
-        // Read POST body
+        // Skip headers until we find the blank line
+        while (client.available()) {
+            String line = client.readStringUntil('\n');
+            if (line.length() <= 1) { // Empty line indicates end of headers
+                break;
+            }
+        }
+        
+        // Now read the POST body
         while (client.available()) {
             body += (char)client.read();
         }
         
+        Serial.println("DEBUG: Body received: " + body);
+        Serial.println("DEBUG: Body length: " + String(body.length()));
+        
         // Parse form data (simple parsing)
+        Serial.println("DEBUG: Starting to parse form fields...");
+        Serial.println("DEBUG: Config before parsing - maxRounds: " + String(config.maxRounds) + ", deepBreathingSeconds: " + String(config.deepBreathingSeconds) + ", recoverySeconds: " + String(config.recoverySeconds));
+        
         if (body.indexOf("maxRounds=") >= 0) {
             int start = body.indexOf("maxRounds=") + 10;
             int end = body.indexOf("&", start);
             if (end == -1) end = body.length();
-            config.maxRounds = body.substring(start, end).toInt();
+            String value = body.substring(start, end);
+            config.maxRounds = value.toInt();
+            Serial.println("DEBUG: Parsed maxRounds - raw: '" + value + "' parsed: " + String(config.maxRounds));
         }
+        
+        if (body.indexOf("deepBreathingSeconds=") >= 0) {
+            int start = body.indexOf("deepBreathingSeconds=") + 21;
+            int end = body.indexOf("&", start);
+            if (end == -1) end = body.length();
+            String value = body.substring(start, end);
+            config.deepBreathingSeconds = value.toInt();
+            Serial.println("DEBUG: Parsed deepBreathingSeconds - raw: '" + value + "' parsed: " + String(config.deepBreathingSeconds));
+        }
+        
+        if (body.indexOf("recoverySeconds=") >= 0) {
+            int start = body.indexOf("recoverySeconds=") + 16;
+            int end = body.indexOf("&", start);
+            if (end == -1) end = body.length();
+            String value = body.substring(start, end);
+            config.recoverySeconds = value.toInt();
+            Serial.println("DEBUG: Parsed recoverySeconds - raw: '" + value + "' parsed: " + String(config.recoverySeconds));
+        }
+        
+        if (body.indexOf("idleTimeoutMinutes=") >= 0) {
+            int start = body.indexOf("idleTimeoutMinutes=") + 19;
+            int end = body.indexOf("&", start);
+            if (end == -1) end = body.length();
+            config.idleTimeoutMinutes = body.substring(start, end).toInt();
+        }
+        
+        if (body.indexOf("silentPhaseMaxMinutes=") >= 0) {
+            int start = body.indexOf("silentPhaseMaxMinutes=") + 22;
+            int end = body.indexOf("&", start);
+            if (end == -1) end = body.length();
+            config.silentPhaseMaxMinutes = body.substring(start, end).toInt();
+        }
+        
+        if (body.indexOf("silentReminderEnabled=") >= 0) {
+            int start = body.indexOf("silentReminderEnabled=") + 22;
+            int end = body.indexOf("&", start);
+            if (end == -1) end = body.length();
+            config.silentReminderEnabled = (body.substring(start, end).toInt() == 1);
+        }
+        
+        if (body.indexOf("silentReminderIntervalMinutes=") >= 0) {
+            int start = body.indexOf("silentReminderIntervalMinutes=") + 30;
+            int end = body.indexOf("&", start);
+            if (end == -1) end = body.length();
+            config.silentReminderIntervalMinutes = body.substring(start, end).toInt();
+        }
+        
+        Serial.println("DEBUG: About to save config with values:");
+        Serial.println("  maxRounds: " + String(config.maxRounds));
+        Serial.println("  deepBreathingSeconds: " + String(config.deepBreathingSeconds));
+        Serial.println("  recoverySeconds: " + String(config.recoverySeconds));
+        Serial.println("  idleTimeoutMinutes: " + String(config.idleTimeoutMinutes));
+        Serial.println("  silentPhaseMaxMinutes: " + String(config.silentPhaseMaxMinutes));
+        Serial.println("  silentReminderEnabled: " + String(config.silentReminderEnabled));
+        Serial.println("  silentReminderIntervalMinutes: " + String(config.silentReminderIntervalMinutes));
         
         saveConfig(config);
         Serial.println("Configuration saved via web interface");
+        
+        // Verify the save by loading it back
+        AppConfig verifyConfig = loadConfig();
+        Serial.println("DEBUG: Verification - loaded back from storage:");
+        Serial.println("  maxRounds: " + String(verifyConfig.maxRounds));
+        Serial.println("  deepBreathingSeconds: " + String(verifyConfig.deepBreathingSeconds));
+        Serial.println("  recoverySeconds: " + String(verifyConfig.recoverySeconds));
         
         String content = "<div class='status'>Settings saved successfully!</div>";
         content += "<p><a href='/config'>Back to Settings</a></p>";

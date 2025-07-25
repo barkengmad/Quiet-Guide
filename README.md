@@ -42,8 +42,9 @@ A minimalist, standalone meditation aid that guides breathing sessions over conf
 
 #### **Idle State Operation**
 - ✅ **Short Press:** Cycles through round count (1→2→3→4→5→1...)
+- ✅ **Smart Round Selection:** 1-second delay after button press allows multiple rapid presses without pulse interference
 - ✅ **Long Press (2+ seconds):** Starts meditation session
-- ✅ **Feedback:** Vibration pulses equal to selected round count
+- ✅ **Feedback:** Vibration pulses equal to selected round count (delayed for smooth interaction)
 - ✅ **Auto Sleep:** Deep sleep after 3 minutes of inactivity
 - ⏳ **Wake-up:** Any button press wakes device from deep sleep
 
@@ -83,9 +84,10 @@ Each round consists of three phases:
 ### Data Management
 
 #### **Configuration Storage**
-- ⏳ Persistent storage in EEPROM
-- ⏳ Survives power cycles and deep sleep
-- ⏳ Automatic default value initialization
+- ✅ **Persistent Storage:** EEPROM-based configuration (tested and verified)
+- ✅ **Power Cycle Survival:** Settings survive power cycles and deep sleep
+- ✅ **Default Initialization:** Automatic default value setup on first boot
+- ✅ **Web Interface Integration:** Real-time saving and loading via browser
 
 #### **Session Logging**
 - ⏳ JSON format storage in SPIFFS
@@ -152,24 +154,68 @@ Current round count is adjustable via button interface (1-5 rounds).
 2. **WiFi Credentials:** Edit `src/secrets.h` with your network details
 3. **Upload Code:** Use PlatformIO to compile and upload
 4. **First Boot:** Device will attempt network connection and initialize defaults
-5. **Operation:** Use button interface to select rounds and start sessions
+5. **Web Access:** Note the IP address displayed during boot for browser access
+6. **Training Mode:** Enable Training Mode in the web dashboard for learning the device
+
+### **Getting Started with Training Mode**
+
+For first-time users, Training Mode provides an excellent way to understand the meditation flow:
+
+1. **Connect to Web Interface:** Open the device's IP address in your browser
+2. **Enable Training Mode:** Click the "Enable Training Mode" button on the dashboard
+3. **Watch Real-time Updates:** See detailed explanations for each phase as you progress
+4. **Learn the Process:** Understand what each vibration pattern means and what to expect
+5. **Disable When Ready:** Turn off Training Mode for distraction-free meditation sessions
+
+Training Mode provides educational content explaining the science and technique behind each phase, making it perfect for learning the Wim Hof breathing method.
 
 ## Roadmap
 
-### 🔄 **Web Interface** (In Development)
-The web configuration interface is currently being implemented. The device will display the IP address when connected to WiFi. **Planned features:**
+### ✅ **Web Interface** (Implemented & Tested)
+The web configuration interface is fully functional. When connected to WiFi, the device displays its IP address for browser access.
 
-- 🔄 **Configuration Page:** Adjust all timing parameters via web browser
-- 🔄 **Session Review:** View and download session logs in readable format
-- 🔄 **Log Download:** JSON export of complete session history
-- 🔄 **Settings Management:**
-  - 🔄 Deep breathing phase duration (10-300 seconds)
-  - 🔄 Recovery phase duration (5-120 seconds)
-  - 🔄 Silent reminder settings (enable/disable and interval)
-  - 🔄 Idle timeout configuration (1-60 minutes)
-  - 🔄 Maximum rounds setting (1-10 rounds)
+#### **Dashboard Features:**
+- ✅ **Real-time Status:** Current device state and selected round count
+- ✅ **Training Mode:** Educational descriptions for each meditation phase
+- ✅ **Settings Overview:** All current configuration values displayed
 
-**Current Status:** Core meditation functionality is fully working. Web interface will be added in the next update using a more compatible web server library.
+#### **Training Mode Features:**
+- ✅ **Toggle Button:** Enable/disable training mode with one click
+- ✅ **Real-time Updates:** Status updates every second when enabled
+- ✅ **Educational Content:** Detailed explanations for each phase:
+  - 🏠 **IDLE:** Round selection and session start instructions
+  - 🫁 **DEEP BREATHING:** Hyperventilation technique and benefits
+  - 🛑 **BREATH HOLD:** Mammalian dive reflex and CO2 tolerance training
+  - 💨 **RECOVERY:** Integration breath technique and purpose
+  - 🧘 **SILENT MEDITATION:** Inner awareness and heightened state benefits
+- ✅ **Performance Optimized:** Zero CPU overhead when disabled
+- ✅ **Persistent Setting:** Browser remembers preference across sessions
+
+#### **Configuration Management:**
+- ✅ **Settings Page:** Adjust all timing parameters via web browser
+- ✅ **Form Validation:** Input ranges enforced (tested and verified)
+- ✅ **Persistent Storage:** All settings save correctly to EEPROM
+- ✅ **Real-time Updates:** Changes immediately reflected in interface
+- ✅ **Settings Management:**
+  - ✅ Deep breathing phase duration (10-300 seconds)
+  - ✅ Recovery phase duration (5-120 seconds)
+  - ✅ Silent reminder settings (enable/disable and interval)
+  - ✅ Idle timeout configuration (1-60 minutes)
+  - ✅ Maximum rounds setting (1-10 rounds)
+
+#### **Session Log Management:**
+- ✅ **Session Review:** View complete session history with formatted display
+- ✅ **JSON Download:** Export complete session history
+- ✅ **Individual Session Deletion:** Delete specific sessions with confirmation
+- ✅ **Bulk Deletion:** Delete all sessions with "Are you sure?" confirmation
+- ✅ **Session Data Display:**
+  - ✅ Date and time stamps
+  - ✅ Round-by-round durations (deep breathing, breath hold, recovery)
+  - ✅ Silent meditation duration
+  - ✅ Total session time
+  - ✅ Human-readable time formatting (e.g., "2m 15s")
+
+**Current Status:** Web interface is fully functional and extensively tested. All features work reliably across different browsers.
 
 ### 🔄 **Multiple Breathing Modes**
 The architecture supports additional breathing patterns:
@@ -239,9 +285,16 @@ src/
 - **Dependencies:** ArduinoJson library
 - **Target:** ESP32-WROOM-32 compatible boards
 
+### **Recent Improvements**
+- **Fixed:** Web interface settings persistence (POST body parsing bug resolved)
+- **Added:** Training Mode with real-time educational content
+- **Enhanced:** Round selection with 1-second delay for smooth interaction
+- **Improved:** Session log management with individual and bulk deletion
+- **Verified:** All configuration settings now save and persist correctly
+
 ---
 
-**Version:** 1.0.0  
+**Version:** 1.1.0  
 **Platform:** ESP32 Arduino Framework  
 **License:** Open Source  
-**Development Status:** Core functionality complete, web interface pending restoration 
+**Development Status:** Core functionality and web interface complete. Training mode and session management fully implemented and tested. 

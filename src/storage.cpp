@@ -90,4 +90,52 @@ String getSessionLogsJson() {
     logs += "]";
     file.close();
     return logs;
+}
+
+void deleteSessionLog(int index) {
+    File file = SPIFFS.open("/session_logs.json", FILE_READ);
+    if (!file) {
+        Serial.println("No session logs file found");
+        return;
+    }
+    
+    // Read all lines into memory
+    String lines[100]; // Assuming max 100 sessions - could be made dynamic
+    int lineCount = 0;
+    while (file.available() && lineCount < 100) {
+        lines[lineCount] = file.readStringUntil('\n');
+        lineCount++;
+    }
+    file.close();
+    
+    // Check if index is valid
+    if (index < 0 || index >= lineCount) {
+        Serial.println("Invalid session index for deletion");
+        return;
+    }
+    
+    // Rewrite file without the session at the specified index
+    file = SPIFFS.open("/session_logs.json", FILE_WRITE);
+    if (!file) {
+        Serial.println("Failed to open file for writing");
+        return;
+    }
+    
+    for (int i = 0; i < lineCount; i++) {
+        if (i != index) {
+            file.println(lines[i]);
+        }
+    }
+    file.close();
+    
+    Serial.print("Deleted session at index: ");
+    Serial.println(index);
+}
+
+void deleteAllSessionLogs() {
+    if (SPIFFS.remove("/session_logs.json")) {
+        Serial.println("All session logs deleted");
+    } else {
+        Serial.println("Failed to delete session logs or file doesn't exist");
+    }
 } 

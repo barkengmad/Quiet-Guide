@@ -10,5 +10,7 @@ AppConfig loadConfig();
 void saveSessionLog(const JsonObject& log);
 String getSessionLogs();
 String getSessionLogsJson();
+void deleteSessionLog(int index);
+void deleteAllSessionLogs();
 
 #endif // STORAGE_H 

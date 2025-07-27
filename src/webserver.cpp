@@ -178,6 +178,7 @@ String generateHTML(String title, String content) {
     html += "<h1>🧘 Meditation Timer</h1>";
     html += "<div class='nav'>";
     html += "<a href='/'>Dashboard</a>";
+    html += "<a href='/guide'>Guide</a>";
     html += "<a href='/config'>Settings</a>";
     html += "<a href='/logs'>Logs</a>";
     html += "</div>";
@@ -213,6 +214,109 @@ void handleClient(WiFiClient& client) {
         content += "<p><strong>Silent Phase Max:</strong> " + String(config.silentPhaseMaxMinutes) + " min</p>";
         content += "<p><strong>Silent Reminders:</strong> " + String(config.silentReminderEnabled ? "On" : "Off") + "</p>";
         response = generateHTML("Dashboard", content);
+        
+    } else if (request.indexOf("GET /guide") >= 0) {
+        // Wim Hof Method Guide
+        String content = "<h2>🧘 Wim Hof Breathing Method Guide</h2>";
+        
+        content += "<h3>📖 What is the Wim Hof Method?</h3>";
+        content += "<p>The Wim Hof Method is a powerful breathing technique developed by Wim \"The Iceman\" Hof. It combines controlled hyperventilation, breath retention, and meditation to unlock extraordinary physical and mental benefits.</p>";
+        
+        content += "<h3>🧬 The Science Behind It</h3>";
+        content += "<p><strong>Hyperventilation Phase:</strong> Deep, rapid breathing increases oxygen levels while decreasing CO2, creating an alkaline state in your blood.</p>";
+        content += "<p><strong>Breath Hold:</strong> Triggers the mammalian dive reflex, activating your sympathetic nervous system and releasing adrenaline and noradrenaline naturally.</p>";
+        content += "<p><strong>Recovery:</strong> Balances your nervous system and integrates the physiological changes.</p>";
+        content += "<p><strong>Benefits:</strong> Improved immune response, reduced inflammation, increased energy, better stress resilience, and enhanced mental clarity.</p>";
+        
+        content += "<h3>🤖 How Your Device Helps</h3>";
+        content += "<p>Your meditation timer guides you through each phase with precise timing and haptic feedback:</p>";
+        content += "<ul>";
+        content += "<li><strong>Round Selection:</strong> Short button presses cycle through 1-" + String(loadConfig().maxRounds) + " rounds</li>";
+        content += "<li><strong>Phase Transitions:</strong> Automatic timing with manual override capability</li>";
+        content += "<li><strong>Vibration Cues:</strong> Clear feedback for each phase transition</li>";
+        content += "<li><strong>Progress Tracking:</strong> Buzzes indicate current round number</li>";
+        content += "<li><strong>Session Logging:</strong> Automatic recording of your practice sessions</li>";
+        content += "</ul>";
+        
+        content += "<h3>📋 Complete Session Flow</h3>";
+        content += "<div style='background:#f8f9fa;padding:15px;margin:15px 0;border-radius:5px;border-left:4px solid #007bff;'>";
+        content += "<h4>🏠 IDLE - Preparation</h4>";
+        content += "<p><strong>Action:</strong> Select your desired number of rounds (1-" + String(loadConfig().maxRounds) + ") with short button presses</p>";
+        content += "<p><strong>Device:</strong> Vibrates equal to selected rounds after 1-second delay</p>";
+        content += "<p><strong>Start:</strong> Long press (2+ seconds) to begin session</p>";
+        content += "</div>";
+        
+        content += "<div style='background:#f8f9fa;padding:15px;margin:15px 0;border-radius:5px;border-left:4px solid #28a745;'>";
+        content += "<h4>🫁 DEEP BREATHING - Oxygenation</h4>";
+        content += "<p><strong>Technique:</strong> Breathe deeply and rhythmically - in through nose, out through mouth</p>";
+        content += "<p><strong>Duration:</strong> Default " + String(loadConfig().deepBreathingSeconds) + " seconds (configurable)</p>";
+        content += "<p><strong>Feel:</strong> Tingling, lightheadedness, or slight dizziness is normal</p>";
+        content += "<p><strong>Transition:</strong> Long vibration after timeout, or short press when ready</p>";
+        content += "<p><strong>Preparation:</strong> When advancing - breathe out completely and hold</p>";
+        content += "</div>";
+        
+        content += "<div style='background:#f8f9fa;padding:15px;margin:15px 0;border-radius:5px;border-left:4px solid #dc3545;'>";
+        content += "<h4>🛑 BREATH HOLD - The Core</h4>";
+        content += "<p><strong>Position:</strong> Hold breath after complete exhale - lungs empty</p>";
+        content += "<p><strong>Mindset:</strong> Stay relaxed, don't force it, trust your body</p>";
+        content += "<p><strong>Duration:</strong> As long as comfortable - everyone is different</p>";
+        content += "<p><strong>Progression:</strong> When you feel the urge to breathe, try holding a few seconds more</p>";
+        content += "<p><strong>Transition:</strong> Take deep breath in, hold 10-15 seconds, then short press</p>";
+        content += "</div>";
+        
+        content += "<div style='background:#f8f9fa;padding:15px;margin:15px 0;border-radius:5px;border-left:4px solid #ffc107;'>";
+        content += "<h4>💨 RECOVERY - Integration</h4>";
+        content += "<p><strong>Breath:</strong> Hold deep recovery breath for 10-15 seconds</p>";
+        content += "<p><strong>Purpose:</strong> Integrates physiological changes from breath hold</p>";
+        content += "<p><strong>Duration:</strong> Default " + String(loadConfig().recoverySeconds) + " seconds (configurable)</p>";
+        content += "<p><strong>Next Round:</strong> Device buzzes equal to next round number</p>";
+        content += "<p><strong>Final Round:</strong> Device gives one long buzz for silent phase</p>";
+        content += "</div>";
+        
+        content += "<div style='background:#f8f9fa;padding:15px;margin:15px 0;border-radius:5px;border-left:4px solid #6f42c1;'>";
+        content += "<h4>🧘 SILENT MEDITATION - Integration</h4>";
+        content += "<p><strong>Experience:</strong> Heightened awareness and calm after breathing rounds</p>";
+        content += "<p><strong>Practice:</strong> Observe inner sensations, thoughts, and feelings</p>";
+        content += "<p><strong>Duration:</strong> As long as feels right (max " + String(loadConfig().silentPhaseMaxMinutes) + " minutes)</p>";
+        content += "<p><strong>End:</strong> Short press when ready to complete session</p>";
+        content += "</div>";
+        
+        content += "<h3>⚠️ Safety Guidelines</h3>";
+        content += "<div style='background:#fff3cd;padding:15px;margin:15px 0;border-radius:5px;border:1px solid #ffeaa7;'>";
+        content += "<p><strong>⚡ Never practice:</strong></p>";
+        content += "<ul>";
+        content += "<li>While driving, swimming, or in water</li>";
+        content += "<li>Standing up (always sit or lie down)</li>";
+        content += "<li>If pregnant or with serious medical conditions</li>";
+        content += "</ul>";
+        content += "<p><strong>🔍 Normal sensations:</strong> Tingling, lightheadedness, feeling of euphoria</p>";
+        content += "<p><strong>🛑 Stop if you experience:</strong> Severe dizziness, chest pain, or discomfort</p>";
+        content += "<p><strong>👨‍⚕️ Consult a doctor</strong> if you have heart conditions, breathing disorders, or other health concerns</p>";
+        content += "</div>";
+        
+        content += "<h3>💡 Tips for Beginners</h3>";
+        content += "<ul>";
+        content += "<li><strong>Start small:</strong> Begin with 1-2 rounds to learn the technique</li>";
+        content += "<li><strong>Use Training Mode:</strong> Enable on the Dashboard for real-time guidance</li>";
+        content += "<li><strong>Find your rhythm:</strong> Don't rush - quality over quantity</li>";
+        content += "<li><strong>Track progress:</strong> Review your session logs to see improvement</li>";
+        content += "<li><strong>Be patient:</strong> Breath hold times improve gradually with practice</li>";
+        content += "<li><strong>Comfortable position:</strong> Sit upright or lie down comfortably</li>";
+        content += "<li><strong>Quiet environment:</strong> Minimize distractions for best results</li>";
+        content += "</ul>";
+        
+        content += "<h3>🎯 Getting Started</h3>";
+        content += "<p><strong>1. Read this guide completely</strong></p>";
+        content += "<p><strong>2. Go to Dashboard and enable Training Mode</strong> for your first sessions</p>";
+        content += "<p><strong>3. Start with 1-2 rounds</strong> to learn the rhythm</p>";
+        content += "<p><strong>4. Practice regularly</strong> - consistency builds strength</p>";
+        content += "<p><strong>5. Adjust settings</strong> as you become more experienced</p>";
+        
+        content += "<div style='background:#d4edda;padding:15px;margin:20px 0;border-radius:5px;text-align:center;'>";
+        content += "<p><strong>🌟 Remember: This is a practice, not a performance. Listen to your body and enjoy the journey! 🌟</strong></p>";
+        content += "</div>";
+        
+        response = generateHTML("Wim Hof Method Guide", content);
         
     } else if (request.indexOf("GET /config") >= 0) {
         // Configuration form

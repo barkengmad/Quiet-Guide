@@ -16,5 +16,6 @@ void finishBooting();
 SessionState getCurrentState();
 int getCurrentSessionRound();
 int getTotalRounds();
+bool shouldPreventDeepSleep();
 
 #endif // SESSION_H 

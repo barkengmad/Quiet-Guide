@@ -179,6 +179,11 @@ String generateHTML(String title, String content) {
     html += "<div class='nav'>";
     html += "<a href='/'>Dashboard</a>";
     html += "<a href='/guide'>Guide</a>";
+    if (isHotspotMode()) {
+        html += "<a href='/wifi-setup' style='background:#dc3545;'>WiFi Setup</a>";
+    } else {
+        html += "<a href='/wifi-setup'>WiFi</a>";
+    }
     html += "<a href='/config'>Settings</a>";
     html += "<a href='/logs'>Logs</a>";
     html += "</div>";
@@ -196,10 +201,13 @@ void handleClient(WiFiClient& client) {
         client.flush();
     }
     
+    Serial.println("Web request: " + request);
+    
     String response = "";
     
     if (request.indexOf("GET / ") >= 0) {
         // Dashboard
+        Serial.println("Serving dashboard page");
         AppConfig config = loadConfig();
         String content = "<div id='statusDiv' class='status'>" + getStatusString() + "</div>";
         content += "<div class='button-group'>";
@@ -318,10 +326,129 @@ void handleClient(WiFiClient& client) {
         
         response = generateHTML("Wim Hof Method Guide", content);
         
+    } else if (request.indexOf("GET /wifi-setup") >= 0) {
+        // WiFi Setup page for hotspot mode
+        Serial.println("Serving WiFi setup page");
+        String content = "<h2>📶 WiFi Setup</h2>";
+        
+        if (isHotspotMode()) {
+            content += "<div style='background:#fff3cd;padding:15px;margin:15px 0;border-radius:5px;border:1px solid #ffeaa7;'>";
+            content += "<p><strong>🔄 Setup Mode Active</strong></p>";
+            content += "<p>Your device is in setup mode. Enter your WiFi credentials below to connect to your network.</p>";
+            content += "</div>";
+        } else {
+            content += "<div style='background:#d4edda;padding:15px;margin:15px 0;border-radius:5px;'>";
+            content += "<p><strong>✅ Connected to WiFi</strong></p>";
+            content += "<p>Your device is connected to: <strong>" + String(WiFi.SSID()) + "</strong></p>";
+            content += "<p>You can change WiFi settings below if needed.</p>";
+            content += "</div>";
+        }
+        
+        content += "<form method='POST' action='/save-wifi'>";
+        content += "<div class='form-group'><label>Network Name (SSID):</label>";
+        content += "<input type='text' name='ssid' placeholder='Enter WiFi network name' required></div>";
+        content += "<div class='form-group'><label>Password:</label>";
+        content += "<input type='password' name='password' placeholder='Enter WiFi password'></div>";
+        content += "<button type='submit'>Connect to WiFi</button>";
+        content += "</form>";
+        
+        // IP Address Vibration Explanation
+        content += "<div style='background:#e7f3ff;padding:15px;margin:15px 0;border-radius:5px;border:1px solid #b3d9ff;'>";
+        content += "<h3>📳 IP Address Notification</h3>";
+        content += "<p><strong>After successfully connecting to WiFi, your device will vibrate the last part of its IP address so you can access it from your network.</strong></p>";
+        content += "<p><strong>Vibration Pattern:</strong></p>";
+        content += "<ul style='margin:10px 0;padding-left:20px;'>";
+        content += "<li><strong>Long buzz</strong> - Start of IP notification</li>";
+        content += "<li><strong>Short buzzes</strong> - Each digit (1 buzz = 1, 2 buzzes = 2, etc.)</li>";
+        content += "<li><strong>10 buzzes</strong> - Represents the digit 0</li>";
+        content += "<li><strong>Long pause</strong> - Between each digit</li>";
+        content += "<li><strong>Long buzz</strong> - End of IP notification</li>";
+        content += "</ul>";
+        content += "<p><strong>Example:</strong> For IP ending in .165:<br>";
+        content += "Long buzz → 1 buzz → pause → 6 buzzes → pause → 5 buzzes → Long buzz</p>";
+        content += "<p><strong>📝 Tip:</strong> Have a pen ready to write down the numbers as the device vibrates them!</p>";
+        content += "</div>";
+        
+        content += "<h3>📱 Available Networks</h3>";
+        content += "<p><em>Scanning for nearby WiFi networks...</em></p>";
+        content += "<div id='networks'></div>";
+        
+        content += "<script>";
+        content += "function scanNetworks() {";
+        content += "  fetch('/scan-wifi').then(r=>r.json()).then(data=>{";
+        content += "    let html = '<ul>';";
+        content += "    data.networks.forEach(net => {";
+        content += "      html += '<li style=\"margin:5px 0;padding:8px;background:#f8f9fa;border-radius:3px;\">';";
+        content += "      html += '<strong>' + net.ssid + '</strong> (' + net.rssi + ' dBm)';";
+        content += "      html += ' <button onclick=\"document.querySelector(\\'input[name=ssid]\\').value=\\'' + net.ssid + '\\'\" style=\"margin-left:10px;padding:2px 8px;background:#007bff;color:white;border:none;border-radius:3px;cursor:pointer;\">Select</button>';";
+        content += "      html += '</li>';";
+        content += "    });";
+        content += "    html += '</ul>';";
+        content += "    document.getElementById('networks').innerHTML = html;";
+        content += "  }).catch(e=>console.log('Scan failed'));";
+        content += "}";
+        content += "setTimeout(scanNetworks, 1000);";
+        content += "</script>";
+        
+        response = generateHTML("WiFi Setup", content);
+        
     } else if (request.indexOf("GET /config") >= 0) {
         // Configuration form
         AppConfig config = loadConfig();
+        WiFiCredentials wifiCreds = loadWiFiCredentials();
+        
+        // Debug output for WiFi credentials
+        Serial.println("=== SETTINGS PAGE DEBUG ===");
+        Serial.print("wifiCreds.isConfigured: ");
+        Serial.println(wifiCreds.isConfigured ? "true" : "false");
+        Serial.print("wifiCreds.ssid length: ");
+        Serial.println(strlen(wifiCreds.ssid));
+        Serial.print("wifiCreds.ssid: '");
+        Serial.print(wifiCreds.ssid);
+        Serial.println("'");
+        Serial.print("wifiCreds.password: '");
+        Serial.print(wifiCreds.password);
+        Serial.println("'");
+        Serial.println("=== END SETTINGS DEBUG ===");
+        
         String content = "<h2>Configuration</h2>";
+        
+        // WiFi Status Section
+        content += "<h3>WiFi Status</h3>";
+        if (isWifiConnected()) {
+            content += "<div style='background:#d4edda;color:#155724;padding:10px;margin:10px 0;border-radius:5px;'>";
+            content += "<strong>Connected to WiFi</strong><br>";
+            content += "SSID: " + String(wifiCreds.ssid) + "<br>";
+            content += "IP Address: " + WiFi.localIP().toString();
+            content += "</div>";
+        } else if (isHotspotMode()) {
+            content += "<div style='background:#fff3cd;color:#856404;padding:10px;margin:10px 0;border-radius:5px;'>";
+            content += "<strong>Hotspot Mode Active</strong><br>";
+            content += "Connect to 'MeditationTimer-Setup' and go to <a href='http://192.168.4.1/wifi-setup'>WiFi Setup</a>";
+            content += "</div>";
+        } else {
+            content += "<div style='background:#f8d7da;color:#721c24;padding:10px;margin:10px 0;border-radius:5px;'>";
+            content += "<strong>Not Connected</strong><br>";
+            content += "No WiFi credentials stored";
+            content += "</div>";
+        }
+        
+        // Stored WiFi Credentials
+        content += "<h3>Stored WiFi Credentials</h3>";
+        if (wifiCreds.isConfigured && strlen(wifiCreds.ssid) > 0) {
+            content += "<div style='background:#e2e3e5;color:#383d41;padding:10px;margin:10px 0;border-radius:5px;'>";
+            content += "<strong>SSID:</strong> " + String(wifiCreds.ssid) + "<br>";
+            content += "<strong>Password:</strong> " + String(wifiCreds.password) + "<br>";
+            content += "<strong>Status:</strong> " + String(wifiCreds.isConfigured ? "Configured" : "Not Configured");
+            content += "</div>";
+        } else {
+            content += "<div style='background:#f8d7da;color:#721c24;padding:10px;margin:10px 0;border-radius:5px;'>";
+            content += "No WiFi credentials stored";
+            content += "</div>";
+        }
+        
+        // Meditation Settings
+        content += "<h3>Meditation Settings</h3>";
         content += "<form method='POST' action='/save'>";
         content += "<div class='form-group'><label>Max Rounds (1-10):</label>";
         content += "<input type='number' name='maxRounds' min='1' max='10' value='" + String(config.maxRounds) + "'></div>";
@@ -343,7 +470,7 @@ void handleClient(WiFiClient& client) {
         content += "<button type='submit'>Save Settings</button></form>";
         response = generateHTML("Configuration", content);
         
-    } else if (request.indexOf("POST /save") >= 0) {
+    } else if (request.indexOf("POST /save") >= 0 && request.indexOf("POST /save-wifi") == -1) {
         // Save configuration
         AppConfig config = loadConfig();
         Serial.println("DEBUG: POST /save request received");
@@ -553,9 +680,174 @@ void handleClient(WiFiClient& client) {
         client.println(json);
         return;
         
+    } else if (request.indexOf("GET /scan-wifi") >= 0) {
+        // WiFi network scan
+        Serial.println("Starting WiFi scan...");
+        int n = WiFi.scanNetworks();
+        String json = "{\"networks\":[";
+        
+        for (int i = 0; i < n; i++) {
+            if (i > 0) json += ",";
+            json += "{\"ssid\":\"" + WiFi.SSID(i) + "\",\"rssi\":" + String(WiFi.RSSI(i)) + "}";
+        }
+        json += "]}";
+        
+        client.println("HTTP/1.1 200 OK");
+        client.println("Content-Type: application/json");
+        client.println("Connection: close");
+        client.println();
+        client.println(json);
+        return;
+        
+    } else if (request.indexOf("POST /save-wifi") >= 0) {
+        // Save WiFi credentials
+        String body = "";
+        
+        // Skip headers until we find the blank line
+        while (client.available()) {
+            String line = client.readStringUntil('\n');
+            if (line.length() <= 1) {
+                break;
+            }
+        }
+        
+        // Read the POST body
+        while (client.available()) {
+            body += (char)client.read();
+        }
+        
+        Serial.println("WiFi setup form data: " + body);
+        
+        // Helper function to decode URL encoded strings
+        auto urlDecode = [](String str) -> String {
+            str.replace("+", " ");
+            // Handle common URL encoded characters
+            str.replace("%20", " ");
+            str.replace("%21", "!");
+            str.replace("%22", "\"");
+            str.replace("%23", "#");
+            str.replace("%24", "$");
+            str.replace("%25", "%");
+            str.replace("%26", "&");
+            str.replace("%27", "'");
+            str.replace("%28", "(");
+            str.replace("%29", ")");
+            str.replace("%2A", "*");
+            str.replace("%2B", "+");
+            str.replace("%2C", ",");
+            str.replace("%2D", "-");
+            str.replace("%2E", ".");
+            str.replace("%2F", "/");
+            str.replace("%3A", ":");
+            str.replace("%3B", ";");
+            str.replace("%3C", "<");
+            str.replace("%3D", "=");
+            str.replace("%3E", ">");
+            str.replace("%3F", "?");
+            str.replace("%40", "@");
+            str.replace("%5B", "[");
+            str.replace("%5C", "\\");
+            str.replace("%5D", "]");
+            str.replace("%5E", "^");
+            str.replace("%5F", "_");
+            str.replace("%60", "`");
+            str.replace("%7B", "{");
+            str.replace("%7C", "|");
+            str.replace("%7D", "}");
+            str.replace("%7E", "~");
+            return str;
+        };
+        
+        WiFiCredentials newCreds;
+        strcpy(newCreds.ssid, "");
+        strcpy(newCreds.password, "");
+        newCreds.isConfigured = false;
+        
+        // Parse SSID
+        if (body.indexOf("ssid=") >= 0) {
+            int start = body.indexOf("ssid=") + 5;
+            int end = body.indexOf("&", start);
+            if (end == -1) end = body.length();
+            String ssidValue = body.substring(start, end);
+            ssidValue = urlDecode(ssidValue);
+            strcpy(newCreds.ssid, ssidValue.c_str());
+        }
+        
+        // Parse Password
+        if (body.indexOf("password=") >= 0) {
+            int start = body.indexOf("password=") + 9;
+            int end = body.indexOf("&", start);
+            if (end == -1) end = body.length();
+            String passwordValue = body.substring(start, end);
+            passwordValue = urlDecode(passwordValue);
+            strcpy(newCreds.password, passwordValue.c_str());
+        }
+        
+        if (strlen(newCreds.ssid) > 0) {
+            newCreds.isConfigured = true;
+            
+            // Debug output before saving
+            Serial.println("=== WEBSERVER SAVE DEBUG ===");
+            Serial.print("About to save - SSID: '");
+            Serial.print(newCreds.ssid);
+            Serial.println("'");
+            Serial.print("About to save - Password: '");
+            Serial.print(newCreds.password);
+            Serial.println("'");
+            Serial.print("About to save - isConfigured: ");
+            Serial.println(newCreds.isConfigured ? "true" : "false");
+            
+            saveWiFiCredentials(newCreds);
+            
+            // Verify save by reading back
+            Serial.println("=== VERIFYING SAVE ===");
+            WiFiCredentials verifyData = loadWiFiCredentials();
+            Serial.print("Verification - SSID: '");
+            Serial.print(verifyData.ssid);
+            Serial.println("'");
+            Serial.print("Verification - Password: '");
+            Serial.print(verifyData.password);
+            Serial.println("'");
+            Serial.print("Verification - isConfigured: ");
+            Serial.println(verifyData.isConfigured ? "true" : "false");
+            Serial.println("=== END VERIFICATION ===");
+            
+            String content = "<div class='status'>WiFi credentials saved! Device will restart and attempt to connect.</div>";
+            content += "<p>If connection fails, the device will start hotspot mode again after 10 seconds.</p>";
+            content += "<p><a href='/'>Back to Dashboard</a></p>";
+            response = generateHTML("WiFi Saved", content);
+            
+            // Send response first, then restart
+            client.println("HTTP/1.1 200 OK");
+            client.println("Content-Type: text/html");
+            client.println("Connection: close");
+            client.println();
+            client.println(response);
+            client.stop();
+            
+            // Set flag to vibrate IP after successful connection
+            setVibrateIPFlag(true);
+            
+            // Restart device to apply new WiFi settings
+            delay(1000);
+            ESP.restart();
+            return;
+        } else {
+            String content = "<div style='background:#f8d7da;color:#721c24;padding:15px;margin:15px 0;border-radius:5px;'>Error: Please enter a valid network name (SSID)</div>";
+            content += "<p><a href='/wifi-setup'>Back to WiFi Setup</a></p>";
+            response = generateHTML("WiFi Setup Error", content);
+        }
+        
     } else {
-        // 404 Not Found
-        response = generateHTML("Not Found", "<h2>404 - Page Not Found</h2><p><a href='/'>Back to Dashboard</a></p>");
+        // 404 Not Found - but redirect to wifi-setup if in hotspot mode
+        if (isHotspotMode()) {
+            Serial.println("Hotspot mode - redirecting to /wifi-setup");
+            response = "HTTP/1.1 302 Found\r\nLocation: /wifi-setup\r\nConnection: close\r\n\r\n";
+            client.println(response);
+            return;
+        } else {
+            response = generateHTML("Not Found", "<h2>404 - Page Not Found</h2><p><a href='/'>Back to Dashboard</a></p>");
+        }
     }
     
     // Send HTTP response
@@ -566,10 +858,32 @@ void handleClient(WiFiClient& client) {
     client.println(response);
 }
 
-void setupWebServer() {
-    if (!isWifiConnected()) {
-        Serial.println("WiFi not connected. Web server not started.");
-        return;
+bool setupWebServer() {
+    if (!isWifiConnected() && !isHotspotMode()) {
+        Serial.println("Neither WiFi connected nor hotspot mode. Web server not started.");
+        return false;
+    }
+
+    // For hotspot mode, try to start the server with extra care
+    if (isHotspotMode()) {
+        Serial.println("Hotspot mode - Attempting to start web server...");
+        
+        // Add extra delay to ensure WiFi AP is fully ready
+        delay(500);
+        
+        // Try to start the server
+        server.begin();
+        webServerRunning = true;
+        
+        Serial.println("===========================================");
+        Serial.println("HOTSPOT WEB SERVER STARTED!");
+        Serial.println("===========================================");
+        Serial.println("Web interface available at: http://192.168.4.1");
+        Serial.println("Available pages:");
+        Serial.println("  /wifi-setup - WiFi configuration");
+        Serial.println("  / - Dashboard (limited in hotspot mode)");
+        Serial.println("===========================================");
+        return true;
     }
 
     server.begin();
@@ -578,12 +892,14 @@ void setupWebServer() {
     Serial.println("===========================================");
     Serial.println("WEB SERVER STARTED!");
     Serial.println("===========================================");
-    Serial.println("Open in browser: http://" + WiFi.localIP().toString());
+    Serial.println("WiFi mode - Open in browser: http://" + WiFi.localIP().toString());
     Serial.println("Available pages:");
     Serial.println("  / - Dashboard with current status");
+    Serial.println("  /guide - Wim Hof method guide");
     Serial.println("  /config - Configuration settings");
     Serial.println("  /logs - Session history");
     Serial.println("===========================================");
+    return true;
 }
 
 void stopWebServer() {
@@ -596,12 +912,25 @@ void stopWebServer() {
 
 void handleWebServer() {
     if (webServerRunning) {
+        // Handle clients for both hotspot and WiFi modes
         WiFiClient client = server.available();
         if (client) {
             Serial.println("New web client connected");
             handleClient(client);
             client.stop();
             Serial.println("Web client disconnected");
+        }
+    } else {
+        // Debug: Check why web server isn't running
+        static unsigned long lastDebugTime = 0;
+        if (millis() - lastDebugTime > 5000) { // Every 5 seconds
+            Serial.print("Web server status - Running: ");
+            Serial.print(webServerRunning);
+            Serial.print(", WiFi connected: ");
+            Serial.print(isWifiConnected());
+            Serial.print(", Hotspot mode: ");
+            Serial.println(isHotspotMode());
+            lastDebugTime = millis();
         }
     }
 } 

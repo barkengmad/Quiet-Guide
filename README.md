@@ -120,14 +120,37 @@ Each round consists of three phases:
 - ⏳ **Battery Optimized:** Non-blocking code architecture minimizes active current
 
 ### Network Features
-- ⏳ **Wi-Fi Connection:** Automatic with fallback
-- ⏳ **NTP Time Sync:** Real-time clock synchronization
-- ⏳ **LED Status Indicators:**
-  - ⏳ Slow flash: Connecting to Wi-Fi
-  - ⏳ Fast flash: Syncing time
-  - ⏳ Solid on: Connected and synced
-  - ⏳ Off: Connection failed
-- ⏳ **Offline Operation:** Full functionality without network
+
+#### **WiFi Provisioning System**
+- ✅ **Automatic Connection:** Attempts to connect to saved WiFi credentials on boot
+- ✅ **Hotspot Fallback:** Creates "MeditationTimer-Setup" hotspot if connection fails
+- ✅ **Manual Hotspot Mode:** Hold button during boot to force setup mode
+- ✅ **Web-Based Setup:** Complete WiFi configuration via browser interface
+- ✅ **Network Scanning:** Lists available WiFi networks for easy selection
+- ✅ **Credential Storage:** EEPROM-based persistence across reboots
+
+#### **IP Address Communication**
+- ✅ **Vibration Notification:** Device vibrates IP address after successful WiFi setup
+- ✅ **Last Octet Pattern:** Communicates final IP segment (e.g., .165)
+- ✅ **Vibration Sequence:**
+  - Long buzz (1s) → Start signal
+  - Short buzzes per digit (1 buzz = 1, 2 buzzes = 2, etc.)
+  - 10 buzzes = digit 0
+  - Long pauses between digits (1.6s)
+  - Long buzz (1s) → End signal
+- ✅ **Example:** IP ending in .165 = Long buzz → 1 buzz → pause → 6 buzzes → pause → 5 buzzes → Long buzz
+- ✅ **Current Rounds:** 3-second pause followed by session round count vibration
+
+#### **Network Status & Connectivity**
+- ✅ **NTP Time Sync:** Real-time clock synchronization with 5-second timeout
+- ✅ **LED Status Indicators:**
+  - Slow flash: Connecting to Wi-Fi
+  - Fast flash: Syncing time / Hotspot mode
+  - Solid on: Connected and synced
+  - Off: Connection failed
+- ✅ **Connection Timeouts:** 10-second WiFi timeout, automatic hotspot fallback
+- ✅ **Offline Operation:** Full meditation functionality without network
+- ✅ **Web Interface Access:** Available at device IP when connected to WiFi
 
 ### Modular Code Architecture
 - ✅ **Clean Separation:** Hardware abstraction, configuration, session logic, networking
@@ -151,11 +174,16 @@ Current round count is adjustable via button interface (1-5 rounds).
 ## Setup Instructions
 
 1. **Hardware Assembly:** Wire components according to pin configuration
-2. **WiFi Credentials:** Edit `src/secrets.h` with your network details
-3. **Upload Code:** Use PlatformIO to compile and upload
-4. **First Boot:** Device will attempt network connection and initialize defaults
-5. **Web Access:** Note the IP address displayed during boot for browser access
-6. **Training Mode:** Enable Training Mode in the web dashboard for learning the device
+2. **Upload Code:** Use PlatformIO to compile and upload
+3. **WiFi Setup:** Device automatically creates "MeditationTimer-Setup" hotspot on first boot
+4. **Configure Network:** 
+   - Connect to the hotspot from any device
+   - Navigate to `http://192.168.4.1/wifi-setup`
+   - Select your WiFi network and enter password
+   - Device will restart and connect to your network
+5. **IP Address:** Device vibrates the last part of its IP address after connection
+6. **Web Access:** Use the vibrated IP to access web interface (e.g., `http://10.10.10.165`)
+7. **Training Mode:** Enable Training Mode in the web dashboard for learning the device
 
 ### **Getting Started with Training Mode**
 
@@ -169,6 +197,32 @@ For first-time users, Training Mode provides an excellent way to understand the 
 
 Training Mode provides educational content explaining the science and technique behind each phase, making it perfect for learning the Wim Hof breathing method.
 
+### **Understanding IP Address Vibration**
+
+After WiFi setup, the device communicates its IP address through vibration patterns so you can access the web interface without needing a display:
+
+#### **Vibration Pattern Guide:**
+- **Long buzz (1 second):** Start of IP notification
+- **Short buzzes (300ms each):** Each digit (count the buzzes)
+  - 1 buzz = digit 1
+  - 2 buzzes = digit 2
+  - ...
+  - 10 buzzes = digit 0 (to distinguish from no buzz)
+- **Long pause (1.6 seconds):** Between each digit
+- **Long buzz (1 second):** End of IP notification
+- **3-second pause:** Separation before round count
+- **Session rounds:** Current device round setting
+
+#### **Example:** 
+For IP address `10.10.10.165`, you'll hear:
+```
+Long buzz → 1 buzz → pause → 6 buzzes → pause → 5 buzzes → Long buzz
+    ↓ (3 second pause) ↓
+Current round count (e.g., 3 buzzes for 3 rounds)
+```
+
+**Tip:** Have a pen ready to write down the digits as the device vibrates them!
+
 ## Roadmap
 
 ### ✅ **Web Interface** (Implemented & Tested)
@@ -178,6 +232,11 @@ The web configuration interface is fully functional. When connected to WiFi, the
 - ✅ **Real-time Status:** Current device state and selected round count
 - ✅ **Training Mode:** Educational descriptions for each meditation phase
 - ✅ **Settings Overview:** All current configuration values displayed
+- ✅ **WiFi Setup Page:** Complete network configuration with:
+  - Network scanning and selection
+  - Password entry with proper URL decoding
+  - IP vibration pattern explanation
+  - Connection status feedback
 
 #### **Training Mode Features:**
 - ✅ **Toggle Button:** Enable/disable training mode with one click
@@ -286,11 +345,14 @@ src/
 - **Target:** ESP32-WROOM-32 compatible boards
 
 ### **Recent Improvements**
-- **Fixed:** Web interface settings persistence (POST body parsing bug resolved)
+- **Added:** Complete WiFi provisioning system with hotspot fallback
+- **Implemented:** IP address vibration notification for screenless setup
+- **Enhanced:** WiFi setup page with network scanning and clear instructions
+- **Fixed:** URL decoding for special characters in WiFi passwords
 - **Added:** Training Mode with real-time educational content
 - **Enhanced:** Round selection with 1-second delay for smooth interaction
 - **Improved:** Session log management with individual and bulk deletion
-- **Verified:** All configuration settings now save and persist correctly
+- **Verified:** All configuration settings and WiFi credentials persist correctly
 
 ---
 

@@ -2,16 +2,30 @@
 #include <EEPROM.h>
 #include <SPIFFS.h>
 
-const int CONFIG_ADDRESS = 0;
-const int CONFIG_MAGIC_NUMBER = 0x1A2B3C4D;
-
 struct StoredConfig {
     int magicNumber;
     AppConfig appConfig;
 };
 
+struct StoredWiFi {
+    int magicNumber;
+    WiFiCredentials wifiCreds;
+};
+
+struct StoredVibrateFlag {
+    int magicNumber;
+    bool shouldVibrate;
+};
+
+const int CONFIG_ADDRESS = 0;
+const int CONFIG_MAGIC_NUMBER = 0x1A2B3C4D;
+const int WIFI_ADDRESS = sizeof(StoredConfig);
+const int WIFI_MAGIC_NUMBER = 0x5E6F7A8B;
+const int VIBRATE_FLAG_ADDRESS = sizeof(StoredConfig) + sizeof(StoredWiFi);
+const int VIBRATE_FLAG_MAGIC = 0x9F8E7D6C;
+
 void setupStorage() {
-    EEPROM.begin(sizeof(StoredConfig));
+    EEPROM.begin(sizeof(StoredConfig) + sizeof(StoredWiFi) + sizeof(StoredVibrateFlag));
     if (!SPIFFS.begin(true)) {
         Serial.println("An Error has occurred while mounting SPIFFS");
         return;
@@ -137,5 +151,115 @@ void deleteAllSessionLogs() {
         Serial.println("All session logs deleted");
     } else {
         Serial.println("Failed to delete session logs or file doesn't exist");
+    }
+}
+
+void saveWiFiCredentials(const WiFiCredentials& creds) {
+    StoredWiFi storedWiFi;
+    storedWiFi.magicNumber = WIFI_MAGIC_NUMBER;
+    storedWiFi.wifiCreds = creds;
+    
+    Serial.println("=== SAVING WIFI CREDENTIALS ===");
+    Serial.print("WIFI_ADDRESS: ");
+    Serial.println(WIFI_ADDRESS);
+    Serial.print("StoredWiFi size: ");
+    Serial.println(sizeof(StoredWiFi));
+    Serial.print("Magic number: 0x");
+    Serial.println(WIFI_MAGIC_NUMBER, HEX);
+    Serial.print("SSID: '");
+    Serial.print(creds.ssid);
+    Serial.print("', Password: '");
+    Serial.print(creds.password);
+    Serial.print("', Configured: ");
+    Serial.println(creds.isConfigured ? "true" : "false");
+    
+    EEPROM.put(WIFI_ADDRESS, storedWiFi);
+    EEPROM.commit();
+    Serial.println("WiFi credentials saved to EEPROM");
+    
+    // Verify the save by reading it back
+    StoredWiFi verifyWiFi;
+    EEPROM.get(WIFI_ADDRESS, verifyWiFi);
+    Serial.println("=== VERIFICATION READ ===");
+    Serial.print("Magic number read: 0x");
+    Serial.println(verifyWiFi.magicNumber, HEX);
+    Serial.print("SSID read: '");
+    Serial.print(verifyWiFi.wifiCreds.ssid);
+    Serial.print("', Password read: '");
+    Serial.print(verifyWiFi.wifiCreds.password);
+    Serial.print("', Configured read: ");
+    Serial.println(verifyWiFi.wifiCreds.isConfigured ? "true" : "false");
+    Serial.println("=== END SAVE ===");
+}
+
+WiFiCredentials loadWiFiCredentials() {
+    StoredWiFi storedWiFi;
+    
+    Serial.println("=== LOADING WIFI CREDENTIALS ===");
+    Serial.print("WIFI_ADDRESS: ");
+    Serial.println(WIFI_ADDRESS);
+    Serial.print("StoredWiFi size: ");
+    Serial.println(sizeof(StoredWiFi));
+    
+    EEPROM.get(WIFI_ADDRESS, storedWiFi);
+    
+    Serial.print("Magic number expected: 0x");
+    Serial.println(WIFI_MAGIC_NUMBER, HEX);
+    Serial.print("Magic number found: 0x");
+    Serial.println(storedWiFi.magicNumber, HEX);
+    
+    if (storedWiFi.magicNumber == WIFI_MAGIC_NUMBER) {
+        Serial.println("WiFi credentials loaded from EEPROM");
+        Serial.print("SSID: '");
+        Serial.print(storedWiFi.wifiCreds.ssid);
+        Serial.print("', Password: '");
+        Serial.print(storedWiFi.wifiCreds.password);
+        Serial.print("', Configured: ");
+        Serial.println(storedWiFi.wifiCreds.isConfigured ? "true" : "false");
+        Serial.println("=== END LOAD ===");
+        return storedWiFi.wifiCreds;
+    } else {
+        Serial.println("No valid WiFi credentials found, returning empty");
+        Serial.println("=== END LOAD ===");
+        WiFiCredentials emptyCreds = {"", "", false};
+        return emptyCreds;
+    }
+}
+
+void clearWiFiCredentials() {
+    WiFiCredentials emptyCreds = {"", "", false};
+    saveWiFiCredentials(emptyCreds);
+    Serial.println("WiFi credentials cleared");
+}
+
+void setVibrateIPFlag(bool shouldVibrate) {
+    StoredVibrateFlag flag;
+    flag.magicNumber = VIBRATE_FLAG_MAGIC;
+    flag.shouldVibrate = shouldVibrate;
+    
+    EEPROM.put(VIBRATE_FLAG_ADDRESS, flag);
+    EEPROM.commit();
+    
+    Serial.print("Vibrate IP flag set to: ");
+    Serial.println(shouldVibrate ? "true" : "false");
+}
+
+bool getVibrateIPFlag() {
+    StoredVibrateFlag flag;
+    EEPROM.get(VIBRATE_FLAG_ADDRESS, flag);
+    
+    if (flag.magicNumber == VIBRATE_FLAG_MAGIC) {
+        Serial.print("Vibrate IP flag loaded: ");
+        Serial.println(flag.shouldVibrate ? "true" : "false");
+        
+        // Clear the flag after reading (one-time use)
+        if (flag.shouldVibrate) {
+            setVibrateIPFlag(false);
+        }
+        
+        return flag.shouldVibrate;
+    } else {
+        Serial.println("No vibrate IP flag found");
+        return false;
     }
 } 

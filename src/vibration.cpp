@@ -1,5 +1,7 @@
 #include "vibration.h"
 #include "config.h"
+#include "storage.h"
+#include "session.h"
 #include <Arduino.h>
 
 unsigned long vibration_stop_time = 0;
@@ -27,4 +29,65 @@ void pulse(int count, int duration_ms, int delay_ms) {
     // This function will be re-implemented inside the session manager
     // to work with the non-blocking architecture. For now, it's a single pulse.
     vibrate(duration_ms);
+}
+
+void vibrateIPAddress(IPAddress ip) {
+    static bool isRunning = false;
+    
+    if (isRunning) {
+        Serial.println("WARNING: vibrateIPAddress called while already running - ignoring!");
+        return;
+    }
+    
+    isRunning = true;
+    Serial.println("*** STARTING vibrateIPAddress function ***");
+    
+    // Get the last octet of the IP address (e.g., 165 from 10.10.10.165)
+    int lastOctet = ip[3];
+    
+    Serial.print("Vibrating IP address last octet: ");
+    Serial.println(lastOctet);
+    
+    // Long buzz to indicate start
+    ledcWrite(VIBRATION_PWM_CHANNEL, 200);
+    delay(1000);
+    ledcWrite(VIBRATION_PWM_CHANNEL, 0);
+    delay(500);
+    
+    // Convert number to individual digits and vibrate each
+    String numberStr = String(lastOctet);
+    
+    for (int i = 0; i < numberStr.length(); i++) {
+        int digit = numberStr.charAt(i) - '0'; // Convert char to int
+        
+        Serial.print("Vibrating digit: ");
+        Serial.println(digit);
+        
+        // Vibrate the number of times equal to the digit
+        // Special case: 0 = 10 buzzes to distinguish from no buzz
+        int buzzes = (digit == 0) ? 10 : digit;
+        
+        for (int j = 0; j < buzzes; j++) {
+            ledcWrite(VIBRATION_PWM_CHANNEL, 200);
+            delay(300); // Short buzz (1.5x longer: 200 * 1.5 = 300)
+            ledcWrite(VIBRATION_PWM_CHANNEL, 0);
+            delay(300); // Short pause between buzzes (also 1.5x longer)
+        }
+        
+        // Longer pause between digits (double: 800 * 2 = 1600)
+        delay(1600);
+    }
+    
+    // Long buzz to indicate end of IP
+    ledcWrite(VIBRATION_PWM_CHANNEL, 200);
+    delay(1000);
+    ledcWrite(VIBRATION_PWM_CHANNEL, 0);
+    
+    Serial.println("IP address vibration complete");
+    
+    // 3 second pause to separate IP vibration from subsequent session pulsing
+    delay(3000);
+    
+    isRunning = false;
+    Serial.println("*** FINISHED vibrateIPAddress function ***");
 } 

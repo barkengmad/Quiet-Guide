@@ -256,16 +256,21 @@ void loopSession() {
                 long_press_detected = false; // Clear the flag AFTER acting on it
             }
             if (millis() - last_interaction_time > (unsigned long)config.idleTimeoutMinutes * 60 * 1000) {
-                Serial.println("Entering deep sleep due to inactivity.");
-                Serial.println("Press button to wake up...");
-                
-                // Configure button pin as wake-up source (wake on LOW - button pressed)
-                esp_sleep_enable_ext0_wakeup(GPIO_NUM_25, 0);
-                
-                // Give a moment for serial to flush
-                delay(100);
-                
-                esp_deep_sleep_start();
+                if (shouldPreventDeepSleep()) {
+                    Serial.println("Preventing deep sleep - device is in setup mode or connecting to WiFi");
+                    last_interaction_time = millis(); // Reset timer
+                } else {
+                    Serial.println("Entering deep sleep due to inactivity.");
+                    Serial.println("Press button to wake up...");
+                    
+                    // Configure button pin as wake-up source (wake on LOW - button pressed)
+                    esp_sleep_enable_ext0_wakeup(GPIO_NUM_25, 0);
+                    
+                    // Give a moment for serial to flush
+                    delay(100);
+                    
+                    esp_deep_sleep_start();
+                }
             }
             break;
 
@@ -390,6 +395,14 @@ int getCurrentSessionRound() {
 
 int getTotalRounds() {
     return config.currentRound;
+}
+
+bool shouldPreventDeepSleep() {
+    // Prevent deep sleep if we're in hotspot mode or if WiFi is connecting
+    extern bool isHotspotMode();
+    extern bool isWifiConnected();
+    
+    return isHotspotMode() || !isWifiConnected();
 }
 
 void finishBooting() {

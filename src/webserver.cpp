@@ -6,6 +6,8 @@
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <ArduinoJson.h>
+#include <math.h>
+#include "rtc_time.h"
 
 WiFiServer server(80);
 bool webServerRunning = false;
@@ -89,6 +91,46 @@ String getTrainingDescription() {
                    "<p><strong>Next phase:</strong> Once initialization is complete, you'll enter the idle state where you can select your rounds.</p>";
     }
     return "<p>Unknown state - please check device status.</p>";
+}
+
+// ---- Moon cycle helpers ----
+static const double SYNODIC_PERIOD_DAYS = 29.530588; // Average lunar synodic month
+
+// Reference new moon: 2000-01-06 18:14:00 (local time reference)
+time_t getReferenceNewMoon() {
+    struct tm t = {0};
+    t.tm_year = 2000 - 1900;
+    t.tm_mon = 0;   // Jan
+    t.tm_mday = 6;
+    t.tm_hour = 18;
+    t.tm_min = 14;
+    t.tm_sec = 0;
+    return mktime(&t);
+}
+
+// Normalize to local midnight
+time_t toLocalMidnight(time_t ts) {
+    struct tm * ti = localtime(&ts);
+    struct tm m = *ti;
+    m.tm_hour = 0; m.tm_min = 0; m.tm_sec = 0;
+    return mktime(&m);
+}
+
+String formatDateYMD(time_t ts) {
+    char buf[11];
+    struct tm * ti = localtime(&ts);
+    strftime(buf, sizeof(buf), "%Y-%m-%d", ti);
+    return String(buf);
+}
+
+void getCurrentMoonCycle(time_t now, time_t &cycleStart, time_t &cycleEnd) {
+    const time_t ref = getReferenceNewMoon();
+    const double periodSec = SYNODIC_PERIOD_DAYS * 86400.0;
+    double elapsed = difftime(now, ref);
+    long k = (long)floor(elapsed / periodSec);
+    cycleStart = ref + (time_t)(k * periodSec);
+    cycleStart = toLocalMidnight(cycleStart);
+    cycleEnd = cycleStart + (time_t)ceil(SYNODIC_PERIOD_DAYS) * 86400; // show whole days
 }
 
 String generateHTML(String title, String content) {
@@ -185,6 +227,7 @@ String generateHTML(String title, String content) {
         html += "<a href='/wifi-setup'>WiFi</a>";
     }
     html += "<a href='/config'>Settings</a>";
+    html += "<a href='/moon'>Moon</a>";
     html += "<a href='/logs'>Logs</a>";
     html += "</div>";
     html += content;
@@ -223,6 +266,105 @@ void handleClient(WiFiClient& client) {
         content += "<p><strong>Silent Reminders:</strong> " + String(config.silentReminderEnabled ? "On" : "Off") + "</p>";
         response = generateHTML("Dashboard", content);
         
+    } else if (request.indexOf("GET /moon") >= 0) {
+        // Moon cycle progress page
+        time_t now = getEpochTime();
+        time_t cycleStart, cycleEnd;
+        getCurrentMoonCycle(now, cycleStart, cycleEnd);
+
+        // Collect dates from logs within this cycle
+        String logs = getSessionLogsJson();
+        JsonDocument doc;
+        deserializeJson(doc, logs);
+        JsonArray logsArray = doc.as<JsonArray>();
+
+        const int dayCount = (int)ceil(SYNODIC_PERIOD_DAYS); // 30 days
+        bool dayHasMeditation[31];
+        for (int i = 0; i < 31; ++i) dayHasMeditation[i] = false;
+
+        // Build date strings for each day in cycle for quick compare
+        String cycleDates[31];
+        for (int i = 0; i < dayCount; ++i) {
+            time_t d = cycleStart + i * 86400;
+            cycleDates[i] = formatDateYMD(d);
+        }
+
+        for (JsonVariant v : logsArray) {
+            const char* dateStr = v["date"].as<const char*>();
+            if (!dateStr) continue;
+            for (int i = 0; i < dayCount; ++i) {
+                if (cycleDates[i].equals(dateStr)) { dayHasMeditation[i] = true; break; }
+            }
+        }
+
+        int daysCompleted = 0;
+        for (int i = 0; i < dayCount; ++i) if (dayHasMeditation[i]) daysCompleted++;
+
+        String content = "<h2>🌙 Moon Cycle Progress</h2>";
+        content += "<p>Goal: meditate every day in the current lunar cycle.</p>";
+        content += "<div style='background:#eef7ff;padding:10px;border-radius:6px;margin:10px 0;'>";
+        content += "Cycle: <strong>" + formatDateYMD(cycleStart) + "</strong> to <strong>" + formatDateYMD(cycleStart + (dayCount-1)*86400) + "</strong><br>";
+        content += "Progress: <strong>" + String(daysCompleted) + "/" + String(dayCount) + " days</strong>";
+        content += "</div>";
+
+        // Circular moon-cycle visualization (circle of dots)
+        const int svgSize = 260;
+        const int cx = svgSize/2;
+        const int cy = svgSize/2;
+        const int orbitR = 100;
+        const int dotR = 7;
+        int todayIdx = (int)floor((double)(toLocalMidnight(now) - cycleStart) / 86400.0);
+        if (todayIdx < 0) todayIdx = 0; if (todayIdx >= dayCount) todayIdx = dayCount - 1;
+
+        // Compute phase progress and illumination
+        const double periodSec = SYNODIC_PERIOD_DAYS * 86400.0;
+        double rawElapsed = difftime(now, cycleStart);
+        double phaseProgress = fmod(rawElapsed, periodSec) / periodSec; // 0..1
+        if (phaseProgress < 0) phaseProgress += 1.0;
+        double illum = 0.5 * (1.0 - cos(2.0 * M_PI * phaseProgress)); // 0=new, 1=full
+        int illumPct = (int)round(illum * 100.0);
+        const char* moonIcon = "🌕";
+        if (phaseProgress < 1.0/8.0) moonIcon = "🌑";
+        else if (phaseProgress < 2.0/8.0) moonIcon = "🌒";
+        else if (phaseProgress < 3.0/8.0) moonIcon = "🌓";
+        else if (phaseProgress < 4.0/8.0) moonIcon = "🌔";
+        else if (phaseProgress < 5.0/8.0) moonIcon = "🌕";
+        else if (phaseProgress < 6.0/8.0) moonIcon = "🌖";
+        else if (phaseProgress < 7.0/8.0) moonIcon = "🌗";
+        else moonIcon = "🌘";
+
+        content += "<svg width='260' height='260' viewBox='0 0 260 260' xmlns='http://www.w3.org/2000/svg' style='display:block;margin:0 auto;'>";
+        // Orbit
+        content += "<circle cx='" + String(cx) + "' cy='" + String(cy) + "' r='" + String(orbitR) + "' fill='none' stroke='#e2e3e5' stroke-width='2'/>";
+        // Dots
+        for (int i = 0; i < dayCount; ++i) {
+            double angle = -M_PI/2 + (2.0*M_PI * i) / (double)dayCount; // start at top
+            int x = (int)round(cx + orbitR * cos(angle));
+            int y = (int)round(cy + orbitR * sin(angle));
+            String fill = dayHasMeditation[i] ? "#ffd54f" : "#e2e3e5";
+            String stroke = (i == todayIdx) ? "#007bff" : "none";
+            String sw = (i == todayIdx) ? "2" : "0";
+            content += "<g>";
+            content += "<circle cx='" + String(x) + "' cy='" + String(y) + "' r='" + String(dotR) + "' fill='" + fill + "' stroke='" + stroke + "' stroke-width='" + sw + "'>";
+            content += "<title>" + cycleDates[i] + (dayHasMeditation[i] ? " — completed" : " — not yet") + "</title>";
+            content += "</circle>";
+            content += "</g>";
+        }
+        // Center moon emoji (large, fills center)
+        content += "<text x='" + String(cx) + "' y='" + String(cy - 18) + "' text-anchor='middle' dominant-baseline='middle' font-family='Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, Arial' font-size='144'>";
+        content += moonIcon;
+        content += "</text>";
+        content += "</svg>";
+
+        // Legend
+        content += "<div style='display:flex;gap:12px;margin-top:10px;justify-content:center;align-items:center'>";
+        content += "<span style='display:inline-flex;align-items:center;gap:6px'><span style='display:inline-block;width:14px;height:14px;background:#28a745;border:1px solid #1e7e34;border-radius:50%'></span>Completed</span>";
+        content += "<span style='display:inline-flex;align-items:center;gap:6px'><span style='display:inline-block;width:14px;height:14px;background:#e2e3e5;border:1px solid #ced4da;border-radius:50%'></span>Not yet</span>";
+        content += "<span style='display:inline-flex;align-items:center;gap:6px'><span style='display:inline-block;width:14px;height:14px;border:2px solid #007bff;border-radius:50%'></span>Today</span>";
+        content += "</div>";
+
+        response = generateHTML("Moon Cycle", content);
+
     } else if (request.indexOf("GET /guide") >= 0) {
         // Wim Hof Method Guide
         String content = "<h2>🧘 Wim Hof Breathing Method Guide</h2>";
@@ -344,11 +486,12 @@ void handleClient(WiFiClient& client) {
             content += "</div>";
         }
         
-        content += "<form method='POST' action='/save-wifi'>";
+        content += "<form method='POST' action='/save-wifi' onsubmit=\"return validateWifiForm()\">";
         content += "<div class='form-group'><label>Network Name (SSID):</label>";
         content += "<input type='text' name='ssid' placeholder='Enter WiFi network name' required></div>";
         content += "<div class='form-group'><label>Password:</label>";
         content += "<input type='password' name='password' placeholder='Enter WiFi password'></div>";
+        content += "<p style='font-size:12px;color:#666;margin-top:-8px;'>SSID: 1–31 characters, Password: 0–63 characters</p>";
         content += "<button type='submit'>Connect to WiFi</button>";
         content += "</form>";
         
@@ -374,6 +517,13 @@ void handleClient(WiFiClient& client) {
         content += "<div id='networks'></div>";
         
         content += "<script>";
+        content += "function validateWifiForm(){";
+        content += "  const ssid=document.querySelector('input[name=ssid]').value;";
+        content += "  const pwd=document.querySelector('input[name=password]').value;";
+        content += "  if(ssid.length<1||ssid.length>31){alert('SSID must be between 1 and 31 characters.');return false;}";
+        content += "  if(pwd.length>63){alert('Password must be 63 characters or fewer.');return false;}";
+        content += "  return true;";
+        content += "}";
         content += "function scanNetworks() {";
         content += "  fetch('/scan-wifi').then(r=>r.json()).then(data=>{";
         content += "    let html = '<ul>';";
@@ -438,7 +588,10 @@ void handleClient(WiFiClient& client) {
         if (wifiCreds.isConfigured && strlen(wifiCreds.ssid) > 0) {
             content += "<div style='background:#e2e3e5;color:#383d41;padding:10px;margin:10px 0;border-radius:5px;'>";
             content += "<strong>SSID:</strong> " + String(wifiCreds.ssid) + "<br>";
-            content += "<strong>Password:</strong> " + String(wifiCreds.password) + "<br>";
+            // Mask password to avoid revealing sensitive information
+            String maskedPwd = "";
+            for (size_t i = 0; i < strlen(wifiCreds.password); ++i) maskedPwd += '*';
+            content += "<strong>Password:</strong> " + maskedPwd + "<br>";
             content += "<strong>Status:</strong> " + String(wifiCreds.isConfigured ? "Configured" : "Not Configured");
             content += "</div>";
         } else {
@@ -718,44 +871,35 @@ void handleClient(WiFiClient& client) {
         
         Serial.println("WiFi setup form data: " + body);
         
-        // Helper function to decode URL encoded strings
-        auto urlDecode = [](String str) -> String {
-            str.replace("+", " ");
-            // Handle common URL encoded characters
-            str.replace("%20", " ");
-            str.replace("%21", "!");
-            str.replace("%22", "\"");
-            str.replace("%23", "#");
-            str.replace("%24", "$");
-            str.replace("%25", "%");
-            str.replace("%26", "&");
-            str.replace("%27", "'");
-            str.replace("%28", "(");
-            str.replace("%29", ")");
-            str.replace("%2A", "*");
-            str.replace("%2B", "+");
-            str.replace("%2C", ",");
-            str.replace("%2D", "-");
-            str.replace("%2E", ".");
-            str.replace("%2F", "/");
-            str.replace("%3A", ":");
-            str.replace("%3B", ";");
-            str.replace("%3C", "<");
-            str.replace("%3D", "=");
-            str.replace("%3E", ">");
-            str.replace("%3F", "?");
-            str.replace("%40", "@");
-            str.replace("%5B", "[");
-            str.replace("%5C", "\\");
-            str.replace("%5D", "]");
-            str.replace("%5E", "^");
-            str.replace("%5F", "_");
-            str.replace("%60", "`");
-            str.replace("%7B", "{");
-            str.replace("%7C", "|");
-            str.replace("%7D", "}");
-            str.replace("%7E", "~");
-            return str;
+        // Helper function to decode URL encoded strings (handles %xx and +)
+        auto urlDecode = [](const String& str) -> String {
+            String out;
+            out.reserve(str.length());
+            auto fromHex = [](char c) -> int {
+                if (c >= '0' && c <= '9') return c - '0';
+                if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
+                if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
+                return -1;
+            };
+            for (size_t i = 0; i < str.length(); ++i) {
+                char c = str.charAt(i);
+                if (c == '+') {
+                    out += ' ';
+                } else if (c == '%' && i + 2 < str.length()) {
+                    int hi = fromHex(str.charAt(i + 1));
+                    int lo = fromHex(str.charAt(i + 2));
+                    if (hi >= 0 && lo >= 0) {
+                        out += char((hi << 4) | lo);
+                        i += 2;
+                    } else {
+                        // Invalid percent-encoding, keep as-is
+                        out += c;
+                    }
+                } else {
+                    out += c;
+                }
+            }
+            return out;
         };
         
         WiFiCredentials newCreds;
@@ -768,9 +912,10 @@ void handleClient(WiFiClient& client) {
             int start = body.indexOf("ssid=") + 5;
             int end = body.indexOf("&", start);
             if (end == -1) end = body.length();
-            String ssidValue = body.substring(start, end);
-            ssidValue = urlDecode(ssidValue);
-            strcpy(newCreds.ssid, ssidValue.c_str());
+            String ssidValue = urlDecode(body.substring(start, end));
+            // Safe copy with truncation
+            strncpy(newCreds.ssid, ssidValue.c_str(), sizeof(newCreds.ssid) - 1);
+            newCreds.ssid[sizeof(newCreds.ssid) - 1] = '\0';
         }
         
         // Parse Password
@@ -778,9 +923,10 @@ void handleClient(WiFiClient& client) {
             int start = body.indexOf("password=") + 9;
             int end = body.indexOf("&", start);
             if (end == -1) end = body.length();
-            String passwordValue = body.substring(start, end);
-            passwordValue = urlDecode(passwordValue);
-            strcpy(newCreds.password, passwordValue.c_str());
+            String passwordValue = urlDecode(body.substring(start, end));
+            // Safe copy with truncation
+            strncpy(newCreds.password, passwordValue.c_str(), sizeof(newCreds.password) - 1);
+            newCreds.password[sizeof(newCreds.password) - 1] = '\0';
         }
         
         if (strlen(newCreds.ssid) > 0) {
@@ -791,9 +937,8 @@ void handleClient(WiFiClient& client) {
             Serial.print("About to save - SSID: '");
             Serial.print(newCreds.ssid);
             Serial.println("'");
-            Serial.print("About to save - Password: '");
-            Serial.print(newCreds.password);
-            Serial.println("'");
+            // Do not print raw passwords to serial
+            Serial.println("About to save - Password: [hidden]");
             Serial.print("About to save - isConfigured: ");
             Serial.println(newCreds.isConfigured ? "true" : "false");
             
@@ -805,9 +950,8 @@ void handleClient(WiFiClient& client) {
             Serial.print("Verification - SSID: '");
             Serial.print(verifyData.ssid);
             Serial.println("'");
-            Serial.print("Verification - Password: '");
-            Serial.print(verifyData.password);
-            Serial.println("'");
+            // Do not print raw passwords to serial
+            Serial.println("Verification - Password: [hidden]");
             Serial.print("Verification - isConfigured: ");
             Serial.println(verifyData.isConfigured ? "true" : "false");
             Serial.println("=== END VERIFICATION ===");
@@ -896,6 +1040,7 @@ bool setupWebServer() {
     Serial.println("Available pages:");
     Serial.println("  / - Dashboard with current status");
     Serial.println("  /guide - Wim Hof method guide");
+    Serial.println("  /moon - Moon cycle progress");
     Serial.println("  /config - Configuration settings");
     Serial.println("  /logs - Session history");
     Serial.println("===========================================");

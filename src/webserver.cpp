@@ -334,8 +334,7 @@ void handleClient(WiFiClient& client) {
         else moonIcon = "🌘";
 
         content += "<svg width='260' height='260' viewBox='0 0 260 260' xmlns='http://www.w3.org/2000/svg' style='display:block;margin:0 auto;'>";
-        // Orbit
-        content += "<circle cx='" + String(cx) + "' cy='" + String(cy) + "' r='" + String(orbitR) + "' fill='none' stroke='#e2e3e5' stroke-width='2'/>";
+        // Orbit removed per design request (no grey connecting line)
         // Dots
         for (int i = 0; i < dayCount; ++i) {
             double angle = -M_PI/2 + (2.0*M_PI * i) / (double)dayCount; // start at top
@@ -358,7 +357,7 @@ void handleClient(WiFiClient& client) {
 
         // Legend
         content += "<div style='display:flex;gap:12px;margin-top:10px;justify-content:center;align-items:center'>";
-        content += "<span style='display:inline-flex;align-items:center;gap:6px'><span style='display:inline-block;width:14px;height:14px;background:#28a745;border:1px solid #1e7e34;border-radius:50%'></span>Completed</span>";
+        content += "<span style='display:inline-flex;align-items:center;gap:6px'><span style='display:inline-block;width:14px;height:14px;background:#ffd54f;border:1px solid #e0b000;border-radius:50%'></span>Completed</span>";
         content += "<span style='display:inline-flex;align-items:center;gap:6px'><span style='display:inline-block;width:14px;height:14px;background:#e2e3e5;border:1px solid #ced4da;border-radius:50%'></span>Not yet</span>";
         content += "<span style='display:inline-flex;align-items:center;gap:6px'><span style='display:inline-block;width:14px;height:14px;border:2px solid #007bff;border-radius:50%'></span>Today</span>";
         content += "</div>";

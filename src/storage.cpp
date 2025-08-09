@@ -52,6 +52,33 @@ AppConfig loadConfig() {
         // For bools, assume 0/1; if eeprom random, normalize to defaults
         if (cfg.startConfirmationHaptics != 0 && cfg.startConfirmationHaptics != 1) cfg.startConfirmationHaptics = DEFAULT_START_CONFIRMATION_HAPTICS;
         if (cfg.abortSaveThresholdSeconds < 5 || cfg.abortSaveThresholdSeconds > 3600) cfg.abortSaveThresholdSeconds = DEFAULT_ABORT_SAVE_THRESHOLD_S;
+        // Custom fields clamp 0..16
+        if (cfg.customInhaleSeconds < 0 || cfg.customInhaleSeconds > 16) cfg.customInhaleSeconds = DEFAULT_CUSTOM_INHALE;
+        if (cfg.customHoldInSeconds < 0 || cfg.customHoldInSeconds > 16) cfg.customHoldInSeconds = DEFAULT_CUSTOM_HOLD_IN;
+        if (cfg.customExhaleSeconds < 0 || cfg.customExhaleSeconds > 16) cfg.customExhaleSeconds = DEFAULT_CUSTOM_EXHALE;
+        if (cfg.customHoldOutSeconds < 0 || cfg.customHoldOutSeconds > 16) cfg.customHoldOutSeconds = DEFAULT_CUSTOM_HOLD_OUT;
+        // Inclusion defaults normalize
+        if (cfg.includeWimHof != 0 && cfg.includeWimHof != 1) cfg.includeWimHof = DEFAULT_INCLUDE_WIMHOF;
+        if (cfg.includeBox != 0 && cfg.includeBox != 1) cfg.includeBox = DEFAULT_INCLUDE_BOX;
+        if (cfg.include478 != 0 && cfg.include478 != 1) cfg.include478 = DEFAULT_INCLUDE_478;
+        if (cfg.includeResonant != 0 && cfg.includeResonant != 1) cfg.includeResonant = DEFAULT_INCLUDE_RESONANT;
+        if (cfg.includeCustom != 0 && cfg.includeCustom != 1) cfg.includeCustom = DEFAULT_INCLUDE_CUSTOM;
+        if (cfg.includeDynamic != 0 && cfg.includeDynamic != 1) cfg.includeDynamic = DEFAULT_INCLUDE_DYNAMIC;
+        // Ensure a valid default order if uninitialized
+        bool badOrder = false;
+        for (int i = 0; i < 6; ++i) {
+            int v = cfg.patternOrder[i];
+            if (v < 1 || v > 6) { badOrder = true; break; }
+        }
+        if (badOrder) {
+            cfg.patternOrder[0]=1; cfg.patternOrder[1]=2; cfg.patternOrder[2]=3; cfg.patternOrder[3]=4; cfg.patternOrder[4]=5; cfg.patternOrder[5]=6;
+        }
+        // Ensure order is a permutation (dedupe/fill) in case of legacy data
+        bool seen[7]; for (int i=0;i<7;i++) seen[i]=false;
+        int out[6]; int outIdx=0;
+        for (int i=0;i<6;i++){ int id=cfg.patternOrder[i]; if (id>=1 && id<=6 && !seen[id]) { out[outIdx++]=id; seen[id]=true; } }
+        for (int id=1; id<=6 && outIdx<6; ++id) if (!seen[id]) out[outIdx++]=id;
+        for (int i=0;i<6;i++) cfg.patternOrder[i]=out[i];
         return cfg;
     } else {
         AppConfig defaultConfig = {
@@ -66,7 +93,18 @@ AppConfig loadConfig() {
             DEFAULT_PATTERN_ID,
             DEFAULT_BOX_SECONDS,
             DEFAULT_START_CONFIRMATION_HAPTICS,
-            DEFAULT_ABORT_SAVE_THRESHOLD_S
+            DEFAULT_ABORT_SAVE_THRESHOLD_S,
+            DEFAULT_CUSTOM_INHALE,
+            DEFAULT_CUSTOM_HOLD_IN,
+            DEFAULT_CUSTOM_EXHALE,
+            DEFAULT_CUSTOM_HOLD_OUT,
+            DEFAULT_INCLUDE_WIMHOF,
+            DEFAULT_INCLUDE_BOX,
+            DEFAULT_INCLUDE_478,
+            DEFAULT_INCLUDE_RESONANT,
+            DEFAULT_INCLUDE_CUSTOM,
+            DEFAULT_INCLUDE_DYNAMIC,
+            {1,2,3,4,5,6}
         };
         saveConfig(defaultConfig);
         return defaultConfig;

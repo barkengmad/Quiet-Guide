@@ -7,6 +7,9 @@ enum class SessionState {
     BREATH_HOLD,
     RECOVERY,
     SILENT,
+    CUSTOM_RUNNING,
+    DYNAMIC_TEACHING,
+    DYNAMIC_GUIDED,
     BOOTING
 };
 
@@ -15,7 +18,9 @@ enum class BreathingPattern : int {
     WIM_HOF = 1,
     BOX = 2,
     FOUR_SEVEN_EIGHT = 3,
-    RESONANT = 4
+    RESONANT = 4,
+    CUSTOM = 5,
+    DYNAMIC = 6
 };
 
 void setupSession();

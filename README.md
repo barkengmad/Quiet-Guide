@@ -183,19 +183,19 @@ Current round count is adjustable via button interface (1-5 rounds).
    - Device will restart and connect to your network
 5. **IP Address:** Device vibrates the last part of its IP address after connection
 6. **Web Access:** Use the vibrated IP to access web interface (e.g., `http://10.10.10.165`)
-7. **Training Mode:** Enable Training Mode in the web dashboard for learning the device
+7. **Training Mode:** Enable Wim Hof Training in the web dashboard for learning the device
 
 ### **Getting Started with Training Mode**
 
 For first-time users, Training Mode provides an excellent way to understand the meditation flow:
 
 1. **Connect to Web Interface:** Open the device's IP address in your browser
-2. **Enable Training Mode:** Click the "Enable Training Mode" button on the dashboard
+2. **Enable Wim Hof Training:** Click the "Enable Wim Hof Training" button on the dashboard
 3. **Watch Real-time Updates:** See detailed explanations for each phase as you progress
 4. **Learn the Process:** Understand what each vibration pattern means and what to expect
 5. **Disable When Ready:** Turn off Training Mode for distraction-free meditation sessions
 
-Training Mode provides educational content explaining the science and technique behind each phase, making it perfect for learning the Wim Hof breathing method.
+Training Mode provides educational content explaining the science and technique behind each phase, making it perfect for learning the Wim Hof breathing method. Note: training guidance currently covers the Wim Hof flow.
 
 ### **Understanding IP Address Vibration**
 
@@ -277,11 +277,14 @@ The web configuration interface is fully functional. When connected to WiFi, the
 **Current Status:** Web interface is fully functional and extensively tested. All features work reliably across different browsers.
 
 ### 🔄 **Multiple Breathing Modes**
-The architecture supports additional breathing patterns:
+Implemented and selectable via long-press in IDLE, with haptic confirmation:
 
-- 🔄 **Box Breathing:** Equal timing for inhale, hold, exhale, hold
-- 🔄 **4-7-8 Technique:** Structured count-based breathing
-- 🔄 **Custom Patterns:** User-defined breathing sequences
+- ✅ **Wim Hof**: Rounds-based (value buzzes)
+- ✅ **Box**: Equal seconds (2–8) for each phase (value buzzes)
+- ✅ **4·7·8**: Inhale 4s, hold 7s, exhale 8s (type-only buzz)
+- ✅ **Resonant (6:6)**: Inhale 6s, exhale 6s (type-only buzz)
+- ✅ **Custom (Timed Prompts)**: User-defined seconds per phase (type-only buzz)
+- ✅ **Dynamic (Tap-to-Teach)**: Learn inhale/exhale cadence by tapping (type-only buzz)
 
 ### 🔄 **Enhanced Features**
 - 🔄 **Calendar View:** Visual session history in web interface
@@ -349,10 +352,14 @@ src/
 - **Implemented:** IP address vibration notification for screenless setup
 - **Enhanced:** WiFi setup page with network scanning and clear instructions
 - **Fixed:** URL decoding for special characters in WiFi passwords
-- **Added:** Training Mode with real-time educational content
+- **Added:** Wim Hof Training Mode with real-time educational content
 - **Enhanced:** Round selection with 1-second delay for smooth interaction
 - **Improved:** Session log management with individual and bulk deletion
 - **Verified:** All configuration settings and WiFi credentials persist correctly
+- **New:** Breathing Patterns management on Dashboard (drag to reorder, radio select, include/exclude per type)
+- **New:** Pattern order persisted and used in haptic rotation; radios persist via web UI
+- **Fix:** currentPatternId POST parsing (off-by-one) and URL-decoding robustness
+- **Change:** Value buzzes only for Wim Hof and Box; others are type-only, including boot/wake and confirmations
 
 ---
 

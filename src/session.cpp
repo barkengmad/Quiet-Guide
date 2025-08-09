@@ -45,6 +45,25 @@ bool round_selection_pending = false;
 unsigned long session_start_time_ms = 0;
 static bool boot_haptics_done = false;
 
+// Custom mode runtime
+struct PhaseDef { const char* name; int seconds; };
+static PhaseDef customPhases[4];
+static int customPhaseCount = 0;
+static int customPhaseIndex = 0;
+static unsigned long phase_start_time = 0;
+
+// Dynamic mode runtime
+static bool dynamicExpectInhale = true; // expecting inhale boundary first
+static unsigned long last_teach_press_ms = 0;
+static int teach_samples_inhale[3] = {0,0,0};
+static int teach_samples_exhale[3] = {0,0,0};
+static int teach_inhale_count = 0;
+static int teach_exhale_count = 0;
+static int avg_inhale_sec = 0;
+static int avg_exhale_sec = 0;
+static unsigned long dynamic_phase_start_ms = 0;
+static bool dynamic_inhale_phase = true; // running inhale/exhale in guided
+
 static int getPatternValueForPulse() {
     if (config.currentPatternId == 2) { // Box seconds
         int val = config.boxSeconds;
@@ -57,7 +76,7 @@ static int getPatternValueForPulse() {
 
 static int getPatternTypeCount() {
     int id = config.currentPatternId;
-    if (id < 1) id = 1; if (id > 4) id = 4;
+    if (id < 1) id = 1; if (id > 6) id = 6;
     return id;
 }
 
@@ -68,7 +87,10 @@ static void announceTypeAndValueBlocking() {
     int valueCount = getPatternValueForPulse();
     vibrateTypeLong(typeCount);
     delay(600);
-    vibrateValueShort(valueCount);
+    // Only announce a value for patterns that have a selectable value (Wim Hof rounds, Box seconds)
+    if (config.currentPatternId == 1 || config.currentPatternId == 2) {
+        vibrateValueShort(valueCount);
+    }
 }
 
 void handleButtonInSession() {
@@ -169,7 +191,12 @@ void enterState(SessionState newState) {
             }
             Serial.print("DEBUG: Currently selected value: ");
             Serial.println(getPatternValueForPulse());
-            startPulsing(getPatternValueForPulse());
+            // Only pulse selection preview for Wim Hof (rounds) and Box (seconds)
+            if (config.currentPatternId == 1 || config.currentPatternId == 2) {
+                startPulsing(getPatternValueForPulse());
+            } else {
+                pulse_count_remaining = 0;
+            }
             break;
         case SessionState::DEEP_BREATHING:
             Serial.println("State: DEEP_BREATHING");
@@ -191,6 +218,25 @@ void enterState(SessionState newState) {
         case SessionState::SILENT:
             Serial.println("State: SILENT");
             vibrate(750); // Longer pulse to indicate start of silent phase
+            break;
+        case SessionState::CUSTOM_RUNNING:
+            Serial.println("State: CUSTOM_RUNNING");
+            vibrate(100); // boundary cue at session start
+            phase_start_time = millis();
+            break;
+        case SessionState::DYNAMIC_TEACHING:
+            Serial.println("State: DYNAMIC_TEACHING");
+            dynamicExpectInhale = true;
+            teach_inhale_count = teach_exhale_count = 0;
+            for(int i=0;i<3;i++){teach_samples_inhale[i]=0; teach_samples_exhale[i]=0;}
+            last_teach_press_ms = 0;
+            vibrate(100);
+            break;
+        case SessionState::DYNAMIC_GUIDED:
+            Serial.println("State: DYNAMIC_GUIDED");
+            dynamic_inhale_phase = true;
+            dynamic_phase_start_ms = millis();
+            vibrate(100);
             break;
     }
 }
@@ -281,13 +327,15 @@ void loopSession() {
                     config.boxSeconds = v;
                     Serial.print("DEBUG: Selected box seconds: ");
                     Serial.println(config.boxSeconds);
-                } else { // Default: rounds 1..maxRounds
+                } else if (config.currentPatternId == 1) { // Wim Hof rounds 1..maxRounds
                     config.currentRound++;
                     if (config.currentRound > config.maxRounds) {
                         config.currentRound = 1;
                     }
                     Serial.print("DEBUG: Selected rounds: ");
                     Serial.println(config.currentRound);
+                } else {
+                    // For other modes, short press in IDLE does nothing to value
                 }
                 round_selection_pending = true;
                 short_press_detected = false; // Clear the flag AFTER acting on it
@@ -296,7 +344,9 @@ void loopSession() {
             // Handle delayed pulsing after round selection
             if (round_selection_pending && (millis() - last_round_press_time > ROUND_SELECT_DELAY)) {
                 saveConfig(config);
-                startPulsing(getPatternValueForPulse());
+                if (config.currentPatternId == 1 || config.currentPatternId == 2) {
+                    startPulsing(getPatternValueForPulse());
+                }
                 round_selection_pending = false;
                 Serial.print("DEBUG: Starting delayed pulse for value: ");
                 Serial.println(getPatternValueForPulse());
@@ -304,10 +354,16 @@ void loopSession() {
             // Handle pattern change (2–4s) and start (≥4s)
             if (released_long_press) {
                 released_long_press = false;
-                // Advance pattern id and announce
-                int id = config.currentPatternId + 1;
-                if (id > 4) id = 1;
-                config.currentPatternId = id;
+                // Advance to next included pattern id and announce
+                // Use configured order to find the next included pattern
+                int currentIdx = 0;
+                for (int i=0;i<6;i++){ if (config.patternOrder[i]==config.currentPatternId){ currentIdx=i; break; } }
+                for (int step=1; step<=6; ++step){
+                    int idx = (currentIdx + step) % 6;
+                    int id = config.patternOrder[idx];
+                    bool ok = (id==1&&config.includeWimHof) || (id==2&&config.includeBox) || (id==3&&config.include478) || (id==4&&config.includeResonant) || (id==5&&config.includeCustom) || (id==6&&config.includeDynamic);
+                    if (ok) { config.currentPatternId = id; break; }
+                }
                 saveConfig(config);
                 announceTypeAndValueBlocking();
             }
@@ -327,7 +383,31 @@ void loopSession() {
                 session_log_doc.clear();
                 rounds_log = session_log_doc["rounds"].to<JsonArray>();
                 session_start_time_ms = millis();
-                enterState(SessionState::DEEP_BREATHING);
+                if (config.currentPatternId == 1) {
+                    enterState(SessionState::DEEP_BREATHING);
+                } else if (config.currentPatternId == 2) {
+                    // Box breathing not yet implemented as separate run flow; placeholder could reuse Wim Hof engine in future
+                    enterState(SessionState::DEEP_BREATHING);
+                } else if (config.currentPatternId == 5) {
+                    // Build custom phases list
+                    customPhaseCount = 0;
+                    if (config.customInhaleSeconds > 0) customPhases[customPhaseCount++] = {"Inhale", config.customInhaleSeconds};
+                    if (config.customHoldInSeconds > 0) customPhases[customPhaseCount++] = {"HoldIn", config.customHoldInSeconds};
+                    if (config.customExhaleSeconds > 0) customPhases[customPhaseCount++] = {"Exhale", config.customExhaleSeconds};
+                    if (config.customHoldOutSeconds > 0) customPhases[customPhaseCount++] = {"HoldOut", config.customHoldOutSeconds};
+                    if (customPhaseCount == 0) {
+                        Serial.println("Custom: no active phases. Refusing to start.");
+                        vibrate(300);
+                        break;
+                    }
+                    customPhaseIndex = 0;
+                    enterState(SessionState::CUSTOM_RUNNING);
+                } else if (config.currentPatternId == 6) {
+                    enterState(SessionState::DYNAMIC_TEACHING);
+                } else {
+                    // 4-7-8 / Resonant: minimal placeholder behavior (no runtime engine yet)
+                    enterState(SessionState::DEEP_BREATHING);
+                }
             }
             if (millis() - last_interaction_time > (unsigned long)config.idleTimeoutMinutes * 60 * 1000) {
                 if (shouldPreventDeepSleep()) {
@@ -500,6 +580,117 @@ void loopSession() {
                 return;
             }
             break;
+
+        case SessionState::CUSTOM_RUNNING: {
+            // Loop through custom phases with boundary buzz and countdown timing
+            if (customPhaseCount == 0) { enterState(SessionState::IDLE); break; }
+            unsigned long elapsed = (millis() - phase_start_time) / 1000;
+            int dur = customPhases[customPhaseIndex].seconds;
+            if (elapsed >= (unsigned long)dur) {
+                // Advance to next phase
+                customPhaseIndex = (customPhaseIndex + 1) % customPhaseCount;
+                vibrate(100);
+                phase_start_time = millis();
+            }
+            // Abort handling
+            if (released_long_press || released_very_long_press) {
+                released_long_press = released_very_long_press = false;
+                Serial.println("Custom: stopped by long press");
+                enterState(SessionState::IDLE);
+                return;
+            }
+            break;
+        }
+
+        case SessionState::DYNAMIC_TEACHING: {
+            // Timeout to idle if no activity
+            if (last_teach_press_ms != 0 && millis() - last_teach_press_ms > 20000UL) {
+                Serial.println("Dynamic teach timeout → IDLE");
+                enterState(SessionState::IDLE);
+                break;
+            }
+            // Handle button edges as sample boundaries
+            if (short_press_detected) {
+                unsigned long now = millis();
+                if (last_teach_press_ms != 0) {
+                    unsigned long deltaMs = now - last_teach_press_ms;
+                    if (deltaMs >= 150) {
+                        int sec = (int)((deltaMs + 500) / 1000); // round ~1s
+                        if (sec < 1) sec = 1; if (sec > 16) sec = 16;
+                        if (dynamicExpectInhale) {
+                            // press at start inhale: previous phase completed was exhale, but teaching alternates; we treat sequence as inhale then exhale
+                            // First valid interval after an inhale press is inhale duration
+                            if (teach_inhale_count < 3) teach_samples_inhale[teach_inhale_count % 3] = sec;
+                            teach_inhale_count++;
+                            dynamicExpectInhale = false;
+                        } else {
+                            if (teach_exhale_count < 3) teach_samples_exhale[teach_exhale_count % 3] = sec;
+                            teach_exhale_count++;
+                            dynamicExpectInhale = true;
+                        }
+                        vibrate(100); // boundary capture feedback
+                    }
+                }
+                last_teach_press_ms = now;
+                short_press_detected = false;
+            }
+            if (released_long_press || released_very_long_press) {
+                released_long_press = released_very_long_press = false;
+                Serial.println("Dynamic teach stopped → IDLE");
+                vibrate(300);
+                enterState(SessionState::IDLE);
+                break;
+            }
+            if (teach_inhale_count >= 3 && teach_exhale_count >= 3) {
+                int sumA = teach_samples_inhale[0] + teach_samples_inhale[1] + teach_samples_inhale[2];
+                int sumB = teach_samples_exhale[0] + teach_samples_exhale[1] + teach_samples_exhale[2];
+                avg_inhale_sec = sumA / 3; if (avg_inhale_sec < 1) avg_inhale_sec = 1; if (avg_inhale_sec > 16) avg_inhale_sec = 16;
+                avg_exhale_sec = sumB / 3; if (avg_exhale_sec < 1) avg_exhale_sec = 1; if (avg_exhale_sec > 16) avg_exhale_sec = 16;
+                // Confirm double buzz
+                vibrate(100); delay(150); vibrate(100);
+                enterState(SessionState::DYNAMIC_GUIDED);
+            }
+            break;
+        }
+
+        case SessionState::DYNAMIC_GUIDED: {
+            unsigned long now = millis();
+            int phaseSec = dynamic_inhale_phase ? avg_inhale_sec : avg_exhale_sec;
+            if (phaseSec < 1) phaseSec = 1; if (phaseSec > 16) phaseSec = 16;
+            if ((now - dynamic_phase_start_ms) / 1000 >= (unsigned long)phaseSec) {
+                dynamic_inhale_phase = !dynamic_inhale_phase;
+                dynamic_phase_start_ms = now;
+                vibrate(100);
+            }
+            // Re-teach updates on short presses; reuse teaching capture alternating
+            if (short_press_detected) {
+                unsigned long deltaMs = now - last_teach_press_ms;
+                if (last_teach_press_ms != 0 && deltaMs >= 150) {
+                    int sec = (int)((deltaMs + 500) / 1000);
+                    if (sec < 1) sec = 1; if (sec > 16) sec = 16;
+                    if (dynamic_inhale_phase) {
+                        teach_samples_inhale[teach_inhale_count % 3] = sec; teach_inhale_count++;
+                    } else {
+                        teach_samples_exhale[teach_exhale_count % 3] = sec; teach_exhale_count++;
+                    }
+                    int sumA = teach_samples_inhale[0] + teach_samples_inhale[1] + teach_samples_inhale[2];
+                    int sumB = teach_samples_exhale[0] + teach_samples_exhale[1] + teach_samples_exhale[2];
+                    avg_inhale_sec = sumA / 3; if (avg_inhale_sec < 1) avg_inhale_sec = 1; if (avg_inhale_sec > 16) avg_inhale_sec = 16;
+                    avg_exhale_sec = sumB / 3; if (avg_exhale_sec < 1) avg_exhale_sec = 1; if (avg_exhale_sec > 16) avg_exhale_sec = 16;
+                    vibrate(100); // updated cadence feedback
+                }
+                last_teach_press_ms = now;
+                short_press_detected = false;
+            }
+            if (released_long_press || released_very_long_press) {
+                released_long_press = released_very_long_press = false;
+                Serial.println("Dynamic guided stopped → IDLE");
+                vibrate(300);
+                enterState(SessionState::IDLE);
+                return;
+            }
+            break;
+        }
     }
 }
 

@@ -141,8 +141,8 @@ String generateHTML(String title, String content) {
     html += "body{font-family:Arial,sans-serif;margin:20px;background:#f5f5f5}";
     html += ".container{max-width:600px;margin:0 auto;background:white;padding:20px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}";
     html += "h1{color:#333;text-align:center;margin-bottom:20px}";
-    html += ".nav{text-align:center;margin-bottom:20px}";
-    html += ".nav a{margin:0 10px;padding:8px 15px;background:#007bff;color:white;text-decoration:none;border-radius:5px}";
+    html += ".nav{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-bottom:20px}";
+    html += ".nav a{padding:8px 15px;background:#007bff;color:white;text-decoration:none;border-radius:5px}";
     html += ".nav a:hover{background:#0056b3}";
     html += ".status{padding:10px;margin:10px 0;background:#d4edda;color:#155724;border-radius:5px;text-align:center}";
     html += ".training-mode{background:#e7f3ff;color:#004085;text-align:left;padding:15px}";
@@ -197,7 +197,9 @@ String generateHTML(String title, String content) {
     html += "      statusDiv.innerHTML = data.status;";
     html += "      statusDiv.className = 'status';";
     html += "    }";
-    html += "    document.getElementById('currentRounds').innerText = data.currentRound;";
+    html += "    var cr = document.getElementById('currentRounds'); if (cr) cr.innerText = data.currentRound;";
+    html += "    var pl = document.getElementById('patternLabel'); if (pl) pl.innerText = data.patternLabel;";
+    html += "    var ps = document.getElementById('patternSettings'); if (ps) ps.innerHTML = data.patternSettingsHtml;";
     html += "  }).catch(e=>console.log('Status update failed'));";
     html += "}";
     html += "window.onload = function(){";
@@ -256,14 +258,40 @@ void handleClient(WiFiClient& client) {
         content += "<div class='button-group'>";
         content += "<button id='trainingBtn' onclick='toggleTrainingMode()' style='background:#28a745;color:white;padding:8px 15px;border:none;border-radius:5px;cursor:pointer;'>Enable Training Mode</button>";
         content += "</div>";
-        content += "<h2>Current Settings</h2>";
-        content += "<p><strong>Selected Rounds:</strong> <span id='currentRounds'>" + String(config.currentRound) + "</span></p>";
-        content += "<p><strong>Max Rounds:</strong> " + String(config.maxRounds) + "</p>";
-        content += "<p><strong>Deep Breathing:</strong> " + String(config.deepBreathingSeconds) + "s</p>";
-        content += "<p><strong>Recovery:</strong> " + String(config.recoverySeconds) + "s</p>";
+        // Current Pattern overview
+        auto patternLabelFn = [](int id) -> String {
+            switch (id) {
+                case 1: return "[1] Wim Hof";
+                case 2: return "[2] Box";
+                case 3: return "[3] 4-7-8";
+                case 4: return "[4] Resonant (6:6)";
+            }
+            return String("[") + String(id) + "] Unknown";
+        };
+        content += "<h2>Current Pattern</h2>";
+        content += "<p><strong>Type:</strong> <span id='patternLabel'>" + patternLabelFn(config.currentPatternId) + "</span></p>";
+        content += "<div id='patternSettings' style='background:#f8f9fa;padding:10px;border-radius:6px;margin-bottom:12px'>";
+        if (config.currentPatternId == 1) {
+            content += "<p><strong>Selected Rounds:</strong> <span id='currentRounds'>" + String(config.currentRound) + "</span></p>";
+            content += "<p><strong>Max Rounds:</strong> " + String(config.maxRounds) + "</p>";
+            content += "<p><strong>Deep Breathing:</strong> " + String(config.deepBreathingSeconds) + "s</p>";
+            content += "<p><strong>Recovery:</strong> " + String(config.recoverySeconds) + "s</p>";
+            content += "<p><strong>Silent Phase Max:</strong> " + String(config.silentPhaseMaxMinutes) + " min</p>";
+            content += "<p><strong>Silent Reminders:</strong> " + String(config.silentReminderEnabled ? "On" : "Off") + "</p>";
+        } else if (config.currentPatternId == 2) {
+            content += "<p><strong>Box Seconds:</strong> " + String(config.boxSeconds) + "s</p>";
+        } else if (config.currentPatternId == 3) {
+            content += "<p>No configurable settings yet for 4-7-8.</p>";
+        } else if (config.currentPatternId == 4) {
+            content += "<p>No configurable settings yet for Resonant.</p>";
+        }
+        content += "</div>";
+
+        // Device Settings (persistent)
+        content += "<h3>Device Settings (persistent)</h3>";
         content += "<p><strong>Idle Timeout:</strong> " + String(config.idleTimeoutMinutes) + " min</p>";
-        content += "<p><strong>Silent Phase Max:</strong> " + String(config.silentPhaseMaxMinutes) + " min</p>";
-        content += "<p><strong>Silent Reminders:</strong> " + String(config.silentReminderEnabled ? "On" : "Off") + "</p>";
+        content += "<p><strong>Start Confirmation Haptic:</strong> " + String(config.startConfirmationHaptics ? "On" : "Off") + "</p>";
+        content += "<p><strong>Keep partial if ≥:</strong> " + String(config.abortSaveThresholdSeconds) + "s</p>";
         response = generateHTML("Dashboard", content);
         
     } else if (request.indexOf("GET /moon") >= 0) {
@@ -365,8 +393,20 @@ void handleClient(WiFiClient& client) {
         response = generateHTML("Moon Cycle", content);
 
     } else if (request.indexOf("GET /guide") >= 0) {
-        // Wim Hof Method Guide
-        String content = "<h2>🧘 Wim Hof Breathing Method Guide</h2>";
+        // Breathing Patterns Guide
+        AppConfig cfg = loadConfig();
+        String content = "<h2>🧭 Breathing Patterns Guide</h2>";
+        // Top index with one-line descriptions and anchors
+        content += "<div style='background:#eef7ff;padding:12px;border-radius:6px;margin:10px 0;'>";
+        content += "<h3 style='margin-top:0'>Patterns</h3>";
+        content += "<ul style='margin:0;padding-left:18px'>";
+        content += "<li><a href='#wimhof'>[1] Wim Hof</a> – Cycles of deep breathing, exhale hold, and recovery to build CO₂ tolerance and energy.</li>";
+        content += "<li><a href='#box'>[2] Box</a> – Equal inhale, hold, exhale, hold (" + String(cfg.boxSeconds) + "s each) to calm and focus.</li>";
+        content += "<li><a href='#478'>[3] 4·7·8</a> – Inhale 4s, hold 7s, exhale 8s; promotes relaxation and downshifts the nervous system.</li>";
+        content += "<li><a href='#resonant'>[4] Resonant (6:6)</a> – Inhale 6s, exhale 6s; supports HRV and balanced breathing rhythm.</li>";
+        content += "</ul></div>";
+        
+        content += "<h2 id='wimhof'>[1] Wim Hof</h2>";
         
         content += "<h3>📖 What is the Wim Hof Method?</h3>";
         content += "<p>The Wim Hof Method is a powerful breathing technique developed by Wim \"The Iceman\" Hof. It combines controlled hyperventilation, breath retention, and meditation to unlock extraordinary physical and mental benefits.</p>";
@@ -464,13 +504,40 @@ void handleClient(WiFiClient& client) {
         content += "<div style='background:#d4edda;padding:15px;margin:20px 0;border-radius:5px;text-align:center;'>";
         content += "<p><strong>🌟 Remember: This is a practice, not a performance. Listen to your body and enjoy the journey! 🌟</strong></p>";
         content += "</div>";
+
+        // Box Breathing section
+        content += "<h2 id='box'>[2] Box Breathing</h2>";
+        content += "<p>Box breathing uses equal-length phases to create a steady rhythm that calms the nervous system and sharpens attention.</p>";
+        content += "<div style='background:#f8f9fa;padding:15px;margin:15px 0;border-radius:5px;border-left:4px solid #28a745;'>";
+        content += "<p><strong>Pattern:</strong> Inhale " + String(cfg.boxSeconds) + "s → Hold " + String(cfg.boxSeconds) + "s → Exhale " + String(cfg.boxSeconds) + "s → Hold " + String(cfg.boxSeconds) + "s</p>";
+        content += "<p><strong>Config:</strong> Adjust seconds (2–8) in Settings. Use short presses in IDLE to change value.</p>";
+        content += "<p><strong>Tips:</strong> Keep shoulders relaxed, breathe quietly through the nose if comfortable.</p>";
+        content += "</div>";
+
+        // 4-7-8 section
+        content += "<h2 id='478'>[3] 4·7·8 Breathing</h2>";
+        content += "<p>A relaxation-focused cadence popularized for easing into sleep and reducing stress.</p>";
+        content += "<div style='background:#f8f9fa;padding:15px;margin:15px 0;border-radius:5px;border-left:4px solid #6f42c1;'>";
+        content += "<p><strong>Pattern:</strong> Inhale 4s → Hold 7s → Exhale 8s (repeat gentle cycles).</p>";
+        content += "<p><strong>Focus:</strong> Soften the exhale; let it be long and unforced. Stop if lightheaded.</p>";
+        content += "</div>";
+
+        // Resonant section
+        content += "<h2 id='resonant'>[4] Resonant Breathing (6:6)</h2>";
+        content += "<p>Breathing at ~6 breaths/min (6s inhale, 6s exhale) can improve heart rate variability and calm.</p>";
+        content += "<div style='background:#f8f9fa;padding:15px;margin:15px 0;border-radius:5px;border-left:4px solid #17a2b8;'>";
+        content += "<p><strong>Pattern:</strong> Inhale 6s → Exhale 6s. Keep it smooth; no breath holds.</p>";
+        content += "<p><strong>Focus:</strong> Breathe diaphragmatically; let the belly lead the breath.</p>";
+        content += "</div>";
         
-        response = generateHTML("Wim Hof Method Guide", content);
+        response = generateHTML("Breathing Patterns Guide", content);
         
     } else if (request.indexOf("GET /wifi-setup") >= 0) {
         // WiFi Setup page for hotspot mode
         Serial.println("Serving WiFi setup page");
         String content = "<h2>📶 WiFi Setup</h2>";
+        
+        // Show WiFi connection status first
         
         if (isHotspotMode()) {
             content += "<div style='background:#fff3cd;padding:15px;margin:15px 0;border-radius:5px;border:1px solid #ffeaa7;'>";
@@ -485,6 +552,26 @@ void handleClient(WiFiClient& client) {
             content += "</div>";
         }
         
+        // Show stored WiFi credentials near the top, after status
+        {
+            WiFiCredentials wifiCreds = loadWiFiCredentials();
+            content += "<h3>Stored WiFi Credentials</h3>";
+            if (wifiCreds.isConfigured && strlen(wifiCreds.ssid) > 0) {
+                content += "<div style='background:#e2e3e5;color:#383d41;padding:10px;margin:10px 0;border-radius:5px;'>";
+                content += "<strong>SSID:</strong> " + String(wifiCreds.ssid) + "<br>";
+                String maskedPwd = "";
+                for (size_t i = 0; i < strlen(wifiCreds.password); ++i) maskedPwd += '*';
+                content += "<strong>Password:</strong> " + maskedPwd + "<br>";
+                content += "<strong>Status:</strong> " + String(wifiCreds.isConfigured ? "Configured" : "Not Configured") + "";
+                content += "</div>";
+            } else {
+                content += "<div style='background:#f8d7da;color:#721c24;padding:10px;margin:10px 0;border-radius:5px;'>";
+                content += "No WiFi credentials stored";
+                content += "</div>";
+            }
+        }
+        
+        // WiFi connect form
         content += "<form method='POST' action='/save-wifi' onsubmit=\"return validateWifiForm()\">";
         content += "<div class='form-group'><label>Network Name (SSID):</label>";
         content += "<input type='text' name='ssid' placeholder='Enter WiFi network name' required></div>";
@@ -544,72 +631,36 @@ void handleClient(WiFiClient& client) {
     } else if (request.indexOf("GET /config") >= 0) {
         // Configuration form
         AppConfig config = loadConfig();
-        WiFiCredentials wifiCreds = loadWiFiCredentials();
-        
-        // Debug output for WiFi credentials
-        Serial.println("=== SETTINGS PAGE DEBUG ===");
-        Serial.print("wifiCreds.isConfigured: ");
-        Serial.println(wifiCreds.isConfigured ? "true" : "false");
-        Serial.print("wifiCreds.ssid length: ");
-        Serial.println(strlen(wifiCreds.ssid));
-        Serial.print("wifiCreds.ssid: '");
-        Serial.print(wifiCreds.ssid);
-        Serial.println("'");
-        Serial.print("wifiCreds.password: '");
-        Serial.print(wifiCreds.password);
-        Serial.println("'");
-        Serial.println("=== END SETTINGS DEBUG ===");
-        
         String content = "<h2>Configuration</h2>";
-        
-        // WiFi Status Section
-        content += "<h3>WiFi Status</h3>";
-        if (isWifiConnected()) {
-            content += "<div style='background:#d4edda;color:#155724;padding:10px;margin:10px 0;border-radius:5px;'>";
-            content += "<strong>Connected to WiFi</strong><br>";
-            content += "SSID: " + String(wifiCreds.ssid) + "<br>";
-            content += "IP Address: " + WiFi.localIP().toString();
-            content += "</div>";
-        } else if (isHotspotMode()) {
-            content += "<div style='background:#fff3cd;color:#856404;padding:10px;margin:10px 0;border-radius:5px;'>";
-            content += "<strong>Hotspot Mode Active</strong><br>";
-            content += "Connect to 'MeditationTimer-Setup' and go to <a href='http://192.168.4.1/wifi-setup'>WiFi Setup</a>";
-            content += "</div>";
-        } else {
-            content += "<div style='background:#f8d7da;color:#721c24;padding:10px;margin:10px 0;border-radius:5px;'>";
-            content += "<strong>Not Connected</strong><br>";
-            content += "No WiFi credentials stored";
-            content += "</div>";
-        }
-        
-        // Stored WiFi Credentials
-        content += "<h3>Stored WiFi Credentials</h3>";
-        if (wifiCreds.isConfigured && strlen(wifiCreds.ssid) > 0) {
-            content += "<div style='background:#e2e3e5;color:#383d41;padding:10px;margin:10px 0;border-radius:5px;'>";
-            content += "<strong>SSID:</strong> " + String(wifiCreds.ssid) + "<br>";
-            // Mask password to avoid revealing sensitive information
-            String maskedPwd = "";
-            for (size_t i = 0; i < strlen(wifiCreds.password); ++i) maskedPwd += '*';
-            content += "<strong>Password:</strong> " + maskedPwd + "<br>";
-            content += "<strong>Status:</strong> " + String(wifiCreds.isConfigured ? "Configured" : "Not Configured");
-            content += "</div>";
-        } else {
-            content += "<div style='background:#f8d7da;color:#721c24;padding:10px;margin:10px 0;border-radius:5px;'>";
-            content += "No WiFi credentials stored";
-            content += "</div>";
-        }
-        
-        // Meditation Settings
-        content += "<h3>Meditation Settings</h3>";
         content += "<form method='POST' action='/save'>";
+        
+        // Device Settings
+        content += "<h3>Device Settings</h3>";
+        content += "<div class='form-group'><label>Idle Timeout (1-60 min):</label>";
+        content += "<input type='number' name='idleTimeoutMinutes' min='1' max='60' value='" + String(config.idleTimeoutMinutes) + "'></div>";
+        content += "<div class='form-group'><label>Start confirmation haptics (type + value):</label>";
+        content += "<select name='startConfirmationHaptics'>";
+        content += "<option value='1'" + String(config.startConfirmationHaptics ? " selected" : "") + ">On</option>";
+        content += "<option value='0'" + String(!config.startConfirmationHaptics ? " selected" : "") + ">Off</option>";
+        content += "</select></div>";
+        content += "<div class='form-group'><label>Keep partial session if ≥ (seconds):</label>";
+        content += "<input type='number' name='abortSaveThresholdSeconds' min='10' max='3600' value='" + String(config.abortSaveThresholdSeconds) + "'></div>";
+        content += "<div class='form-group'><label>Current Pattern:</label>";
+        content += "<select name='currentPatternId'>";
+        content += "<option value='1'" + String(config.currentPatternId == 1 ? " selected" : "") + ">[1] Wim Hof</option>";
+        content += "<option value='2'" + String(config.currentPatternId == 2 ? " selected" : "") + ">[2] Box</option>";
+        content += "<option value='3'" + String(config.currentPatternId == 3 ? " selected" : "") + ">[3] 4-7-8</option>";
+        content += "<option value='4'" + String(config.currentPatternId == 4 ? " selected" : "") + ">[4] Resonant (6:6)</option>";
+        content += "</select></div>";
+
+        // Wim Hof Settings
+        content += "<h3>Wim Hof Settings</h3>";
         content += "<div class='form-group'><label>Max Rounds (1-10):</label>";
         content += "<input type='number' name='maxRounds' min='1' max='10' value='" + String(config.maxRounds) + "'></div>";
         content += "<div class='form-group'><label>Deep Breathing (10-300s):</label>";
         content += "<input type='number' name='deepBreathingSeconds' min='10' max='300' value='" + String(config.deepBreathingSeconds) + "'></div>";
         content += "<div class='form-group'><label>Recovery (5-120s):</label>";
         content += "<input type='number' name='recoverySeconds' min='5' max='120' value='" + String(config.recoverySeconds) + "'></div>";
-        content += "<div class='form-group'><label>Idle Timeout (1-60 min):</label>";
-        content += "<input type='number' name='idleTimeoutMinutes' min='1' max='60' value='" + String(config.idleTimeoutMinutes) + "'></div>";
         content += "<div class='form-group'><label>Silent Max (5-120 min):</label>";
         content += "<input type='number' name='silentPhaseMaxMinutes' min='5' max='120' value='" + String(config.silentPhaseMaxMinutes) + "'></div>";
         content += "<div class='form-group'><label>Silent Reminders:</label>";
@@ -619,6 +670,12 @@ void handleClient(WiFiClient& client) {
         content += "</select></div>";
         content += "<div class='form-group'><label>Reminder Interval (1-30 min):</label>";
         content += "<input type='number' name='silentReminderIntervalMinutes' min='1' max='30' value='" + String(config.silentReminderIntervalMinutes) + "'></div>";
+
+        // Box Breathing Settings
+        content += "<h3>Box Breathing Settings</h3>";
+        content += "<div class='form-group'><label>Box Seconds (2-8):</label>";
+        content += "<input type='number' name='boxSeconds' min='2' max='8' value='" + String(config.boxSeconds) + "'></div>";
+
         content += "<button type='submit'>Save Settings</button></form>";
         response = generateHTML("Configuration", content);
         
@@ -704,6 +761,36 @@ void handleClient(WiFiClient& client) {
             int end = body.indexOf("&", start);
             if (end == -1) end = body.length();
             config.silentReminderIntervalMinutes = body.substring(start, end).toInt();
+        }
+
+        if (body.indexOf("currentPatternId=") >= 0) {
+            int start = body.indexOf("currentPatternId=") + 18;
+            int end = body.indexOf("&", start);
+            if (end == -1) end = body.length();
+            config.currentPatternId = body.substring(start, end).toInt();
+            if (config.currentPatternId < 1 || config.currentPatternId > 10) config.currentPatternId = 1;
+        }
+        if (body.indexOf("boxSeconds=") >= 0) {
+            int start = body.indexOf("boxSeconds=") + 11;
+            int end = body.indexOf("&", start);
+            if (end == -1) end = body.length();
+            int val = body.substring(start, end).toInt();
+            if (val < 2) val = 2; if (val > 8) val = 8;
+            config.boxSeconds = val;
+        }
+        if (body.indexOf("startConfirmationHaptics=") >= 0) {
+            int start = body.indexOf("startConfirmationHaptics=") + 25;
+            int end = body.indexOf("&", start);
+            if (end == -1) end = body.length();
+            config.startConfirmationHaptics = (body.substring(start, end).toInt() == 1);
+        }
+        if (body.indexOf("abortSaveThresholdSeconds=") >= 0) {
+            int start = body.indexOf("abortSaveThresholdSeconds=") + 26;
+            int end = body.indexOf("&", start);
+            if (end == -1) end = body.length();
+            int val = body.substring(start, end).toInt();
+            if (val < 10) val = 10; if (val > 3600) val = 3600;
+            config.abortSaveThresholdSeconds = val;
         }
         
         Serial.println("DEBUG: About to save config with values:");
@@ -817,12 +904,41 @@ void handleClient(WiFiClient& client) {
         String trainingDesc = getTrainingDescription();
         trainingDesc.replace("\"", "\\\""); // Escape quotes for JSON
         trainingDesc.replace("\n", "\\n");   // Escape newlines for JSON
+        // Build pattern label and settings snippet
+        String pLabel;
+        switch (config.currentPatternId) {
+            case 1: pLabel = "[1] Wim Hof"; break;
+            case 2: pLabel = "[2] Box"; break;
+            case 3: pLabel = "[3] 4-7-8"; break;
+            case 4: pLabel = "[4] Resonant (6:6)"; break;
+            default: pLabel = "[?] Unknown"; break;
+        }
+        String pHtml;
+        if (config.currentPatternId == 1) {
+            pHtml = "<p><strong>Selected Rounds:</strong> <span id='currentRounds'>" + String(config.currentRound) + "</span></p>";
+            pHtml += "<p><strong>Max Rounds:</strong> " + String(config.maxRounds) + "</p>";
+            pHtml += "<p><strong>Deep Breathing:</strong> " + String(config.deepBreathingSeconds) + "s</p>";
+            pHtml += "<p><strong>Recovery:</strong> " + String(config.recoverySeconds) + "s</p>";
+            pHtml += "<p><strong>Silent Phase Max:</strong> " + String(config.silentPhaseMaxMinutes) + " min</p>";
+            pHtml += "<p><strong>Silent Reminders:</strong> " + String(config.silentReminderEnabled ? "On" : "Off") + "</p>";
+        } else if (config.currentPatternId == 2) {
+            pHtml = "<p><strong>Box Seconds:</strong> " + String(config.boxSeconds) + "s</p>";
+        } else if (config.currentPatternId == 3) {
+            pHtml = "<p>No configurable settings yet for 4-7-8.</p>";
+        } else if (config.currentPatternId == 4) {
+            pHtml = "<p>No configurable settings yet for Resonant.</p>";
+        }
+        pHtml.replace("\"", "\\\"");
+        pHtml.replace("\n", "\\n");
         
         String json = "{";
         json += "\"status\":\"" + getStatusString() + "\",";
         json += "\"currentRound\":" + String(config.currentRound) + ",";
         json += "\"state\":\"" + String((int)getCurrentState()) + "\",";
-        json += "\"trainingDescription\":\"" + trainingDesc + "\"";
+        json += "\"trainingDescription\":\"" + trainingDesc + "\",";
+        json += "\"patternId\":" + String(config.currentPatternId) + ",";
+        json += "\"patternLabel\":\"" + pLabel + "\",";
+        json += "\"patternSettingsHtml\":\"" + pHtml + "\"";
         json += "}";
         
         client.println("HTTP/1.1 200 OK");

@@ -6,6 +6,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <esp_sleep.h>
+#include "driver/rtc_io.h"
 
 SessionState currentState = SessionState::BOOTING;
 AppConfig config;
@@ -22,7 +23,8 @@ JsonDocument session_log_doc;
 JsonArray rounds_log;
 
 // Button handling - moved into session module
-const long LONG_PRESS_DURATION = 2000;
+const long LONG_PRESS_MIN = 2000;      // 2s ≤ long < 4s
+const long VERY_LONG_PRESS_MIN = 4000; // ≥4s
 const long DEBOUNCE_DELAY = 50;
 const long ROUND_SELECT_DELAY = 1000; // 1 second delay before pulsing
 int last_stable_state = HIGH;
@@ -30,11 +32,44 @@ int last_flicker_state = HIGH;
 unsigned long last_debounce_time = 0;
 unsigned long button_down_time = 0;
 bool short_press_detected = false;
-bool long_press_detected = false;
+// Release-classified flags
+bool released_long_press = false;      // 2–4s
+bool released_very_long_press = false; // ≥4s
+// Zone haptic cues while holding
+bool long_zone_buzzed = false;
+bool very_long_zone_buzzed = false;
 
 // Round selection delay handling
 unsigned long last_round_press_time = 0;
 bool round_selection_pending = false;
+unsigned long session_start_time_ms = 0;
+static bool boot_haptics_done = false;
+
+static int getPatternValueForPulse() {
+    if (config.currentPatternId == 2) { // Box seconds
+        int val = config.boxSeconds;
+        if (val < 2) val = 2; if (val > 8) val = 8;
+        return val;
+    }
+    // Default to rounds
+    return config.currentRound;
+}
+
+static int getPatternTypeCount() {
+    int id = config.currentPatternId;
+    if (id < 1) id = 1; if (id > 4) id = 4;
+    return id;
+}
+
+static void announceTypeAndValueBlocking() {
+    // Stop any queued pulses
+    pulse_count_remaining = 0;
+    int typeCount = getPatternTypeCount();
+    int valueCount = getPatternValueForPulse();
+    vibrateTypeLong(typeCount);
+    delay(600);
+    vibrateValueShort(valueCount);
+}
 
 void handleButtonInSession() {
     int current_reading = digitalRead(BUTTON_PIN);
@@ -56,14 +91,19 @@ void handleButtonInSession() {
                 // A press has just been confirmed
                 button_down_time = millis();
                 Serial.println("DEBUG: Button press confirmed");
+                long_zone_buzzed = false;
+                very_long_zone_buzzed = false;
             } else {
                 // A release has just been confirmed
                 unsigned long press_duration = millis() - button_down_time;
                 Serial.print("DEBUG: Button released, duration: ");
                 Serial.println(press_duration);
                 
-                if (press_duration >= LONG_PRESS_DURATION) {
-                    long_press_detected = true;
+                if (press_duration >= VERY_LONG_PRESS_MIN) {
+                    released_very_long_press = true;
+                    Serial.println("Very long press detected.");
+                } else if (press_duration >= LONG_PRESS_MIN) {
+                    released_long_press = true;
                     Serial.println("Long press detected.");
                 } else if (press_duration > DEBOUNCE_DELAY) {
                     short_press_detected = true;
@@ -75,6 +115,19 @@ void handleButtonInSession() {
 
     // Always update the last raw reading
     last_flicker_state = current_reading;
+
+    // While button is held, provide zone-entry haptic cues
+    if (last_stable_state == LOW) { // currently pressed
+        unsigned long held = millis() - button_down_time;
+        if (!long_zone_buzzed && held >= LONG_PRESS_MIN) {
+            vibrate(200); // short cue
+            long_zone_buzzed = true;
+        }
+        if (!very_long_zone_buzzed && held >= VERY_LONG_PRESS_MIN) {
+            vibrate(200); // short cue
+            very_long_zone_buzzed = true;
+        }
+    }
 }
 
 void startPulsing(int count) {
@@ -110,9 +163,13 @@ void enterState(SessionState newState) {
             break;
         case SessionState::IDLE:
             Serial.println("State: IDLE");
-            Serial.print("DEBUG: Currently selected rounds: ");
-            Serial.println(config.currentRound);
-            startPulsing(config.currentRound);
+            if (!boot_haptics_done) {
+                announceTypeAndValueBlocking();
+                boot_haptics_done = true;
+            }
+            Serial.print("DEBUG: Currently selected value: ");
+            Serial.println(getPatternValueForPulse());
+            startPulsing(getPatternValueForPulse());
             break;
         case SessionState::DEEP_BREATHING:
             Serial.println("State: DEEP_BREATHING");
@@ -218,12 +275,20 @@ void loopSession() {
             if (short_press_detected) {
                 last_interaction_time = millis();
                 last_round_press_time = millis();
-                config.currentRound++;
-                if (config.currentRound > config.maxRounds) {
-                    config.currentRound = 1;
+                if (config.currentPatternId == 2) { // Box seconds 2..8
+                    int v = config.boxSeconds + 1;
+                    if (v > 8) v = 2;
+                    config.boxSeconds = v;
+                    Serial.print("DEBUG: Selected box seconds: ");
+                    Serial.println(config.boxSeconds);
+                } else { // Default: rounds 1..maxRounds
+                    config.currentRound++;
+                    if (config.currentRound > config.maxRounds) {
+                        config.currentRound = 1;
+                    }
+                    Serial.print("DEBUG: Selected rounds: ");
+                    Serial.println(config.currentRound);
                 }
-                Serial.print("DEBUG: Selected rounds: ");
-                Serial.println(config.currentRound);
                 round_selection_pending = true;
                 short_press_detected = false; // Clear the flag AFTER acting on it
             }
@@ -231,29 +296,38 @@ void loopSession() {
             // Handle delayed pulsing after round selection
             if (round_selection_pending && (millis() - last_round_press_time > ROUND_SELECT_DELAY)) {
                 saveConfig(config);
-                startPulsing(config.currentRound);
+                startPulsing(getPatternValueForPulse());
                 round_selection_pending = false;
-                Serial.print("DEBUG: Starting delayed pulse for rounds: ");
-                Serial.println(config.currentRound);
+                Serial.print("DEBUG: Starting delayed pulse for value: ");
+                Serial.println(getPatternValueForPulse());
             }
-            if (long_press_detected) {
-                // If round selection is pending, finalize it before starting session
+            // Handle pattern change (2–4s) and start (≥4s)
+            if (released_long_press) {
+                released_long_press = false;
+                // Advance pattern id and announce
+                int id = config.currentPatternId + 1;
+                if (id > 4) id = 1;
+                config.currentPatternId = id;
+                saveConfig(config);
+                announceTypeAndValueBlocking();
+            }
+            if (released_very_long_press) {
+                released_very_long_press = false;
+                // Finalize any pending selection
                 if (round_selection_pending) {
                     saveConfig(config);
                     round_selection_pending = false;
                 }
-                Serial.println("DEBUG: Long press flag detected in session logic");
-                Serial.print("DEBUG: Starting session with ");
-                Serial.print(config.currentRound);
-                Serial.println(" rounds");
-                vibrate(100); // Immediate feedback for session start
+                // Optional start confirmation haptics
+                if (config.startConfirmationHaptics) {
+                    announceTypeAndValueBlocking();
+                }
+                vibrate(100); // start cue
                 current_session_round = 0;
                 session_log_doc.clear();
                 rounds_log = session_log_doc["rounds"].to<JsonArray>();
-                Serial.println("DEBUG: About to enter DEEP_BREATHING state");
+                session_start_time_ms = millis();
                 enterState(SessionState::DEEP_BREATHING);
-                Serial.println("DEBUG: Returned from enterState call");
-                long_press_detected = false; // Clear the flag AFTER acting on it
             }
             if (millis() - last_interaction_time > (unsigned long)config.idleTimeoutMinutes * 60 * 1000) {
                 if (shouldPreventDeepSleep()) {
@@ -263,7 +337,13 @@ void loopSession() {
                     Serial.println("Entering deep sleep due to inactivity.");
                     Serial.println("Press button to wake up...");
                     
-                    // Configure button pin as wake-up source (wake on LOW - button pressed)
+                    // Configure RTC GPIO for wake (GPIO25 is RTC-capable) with pull-up during deep sleep
+                    rtc_gpio_deinit((gpio_num_t)BUTTON_PIN); // ensure clean state
+                    rtc_gpio_init((gpio_num_t)BUTTON_PIN);
+                    rtc_gpio_set_direction((gpio_num_t)BUTTON_PIN, RTC_GPIO_MODE_INPUT_ONLY);
+                    rtc_gpio_pullup_en((gpio_num_t)BUTTON_PIN);
+                    rtc_gpio_pulldown_dis((gpio_num_t)BUTTON_PIN);
+                    // Enable ext0 wake on LOW level (button pressed)
                     esp_sleep_enable_ext0_wakeup(GPIO_NUM_25, 0);
                     
                     // Give a moment for serial to flush
@@ -289,10 +369,21 @@ void loopSession() {
                 enterState(SessionState::BREATH_HOLD);
             }
             // Global long press abort for active sessions
-            if (long_press_detected) {
-                long_press_detected = false;
+            if (released_long_press || released_very_long_press) {
+                released_long_press = false;
+                released_very_long_press = false;
                 Serial.println("Session aborted by long press.");
                 vibrate(1500); // Distinct long pulse for abort
+                // Save partial if above threshold
+                unsigned long elapsed = (millis() - session_start_time_ms) / 1000;
+                if (elapsed >= (unsigned long)config.abortSaveThresholdSeconds) {
+                    saveCurrentSession();
+                } else {
+                    Serial.println("DEBUG: Discarding session under threshold.");
+                    // Clear any partial log
+                    session_log_doc.clear();
+                    rounds_log = session_log_doc["rounds"].to<JsonArray>();
+                }
                 current_session_round = 0;
                 enterState(SessionState::IDLE);
                 return;
@@ -307,10 +398,19 @@ void loopSession() {
                 short_press_detected = false;
             }
             // Global long press abort for active sessions
-            if (long_press_detected) {
-                long_press_detected = false;
+            if (released_long_press || released_very_long_press) {
+                released_long_press = false;
+                released_very_long_press = false;
                 Serial.println("Session aborted by long press.");
                 vibrate(1500); // Distinct long pulse for abort
+                unsigned long elapsed = (millis() - session_start_time_ms) / 1000;
+                if (elapsed >= (unsigned long)config.abortSaveThresholdSeconds) {
+                    saveCurrentSession();
+                } else {
+                    Serial.println("DEBUG: Discarding session under threshold.");
+                    session_log_doc.clear();
+                    rounds_log = session_log_doc["rounds"].to<JsonArray>();
+                }
                 current_session_round = 0;
                 enterState(SessionState::IDLE);
                 return;
@@ -341,10 +441,19 @@ void loopSession() {
                 }
             }
             // Global long press abort for active sessions
-            if (long_press_detected) {
-                long_press_detected = false;
+            if (released_long_press || released_very_long_press) {
+                released_long_press = false;
+                released_very_long_press = false;
                 Serial.println("Session aborted by long press.");
                 vibrate(1500); // Distinct long pulse for abort
+                unsigned long elapsed = (millis() - session_start_time_ms) / 1000;
+                if (elapsed >= (unsigned long)config.abortSaveThresholdSeconds) {
+                    saveCurrentSession();
+                } else {
+                    Serial.println("DEBUG: Discarding session under threshold.");
+                    session_log_doc.clear();
+                    rounds_log = session_log_doc["rounds"].to<JsonArray>();
+                }
                 current_session_round = 0;
                 enterState(SessionState::IDLE);
                 return;
@@ -373,10 +482,19 @@ void loopSession() {
                 }
             }
             // Global long press abort for active sessions
-            if (long_press_detected) {
-                long_press_detected = false;
+            if (released_long_press || released_very_long_press) {
+                released_long_press = false;
+                released_very_long_press = false;
                 Serial.println("Session aborted by long press.");
                 vibrate(1500); // Distinct long pulse for abort
+                unsigned long elapsed = (millis() - session_start_time_ms) / 1000;
+                if (elapsed >= (unsigned long)config.abortSaveThresholdSeconds) {
+                    saveCurrentSession();
+                } else {
+                    Serial.println("DEBUG: Discarding session under threshold.");
+                    session_log_doc.clear();
+                    rounds_log = session_log_doc["rounds"].to<JsonArray>();
+                }
                 current_session_round = 0;
                 enterState(SessionState::IDLE);
                 return;

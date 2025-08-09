@@ -31,6 +31,25 @@ void pulse(int count, int duration_ms, int delay_ms) {
     vibrate(duration_ms);
 }
 
+void vibrateTypeLong(int count) {
+    for (int i = 0; i < count; ++i) {
+        ledcWrite(VIBRATION_PWM_CHANNEL, 200);
+        delay(800);
+        ledcWrite(VIBRATION_PWM_CHANNEL, 0);
+        if (i < count - 1) delay(1600);
+    }
+}
+
+void vibrateValueShort(int count) {
+    if (count <= 0) return;
+    for (int i = 0; i < count; ++i) {
+        ledcWrite(VIBRATION_PWM_CHANNEL, 200);
+        delay(300);
+        ledcWrite(VIBRATION_PWM_CHANNEL, 0);
+        if (i < count - 1) delay(300);
+    }
+}
+
 void vibrateIPAddress(IPAddress ip) {
     static bool isRunning = false;
     

@@ -45,7 +45,14 @@ AppConfig loadConfig() {
     EEPROM.get(CONFIG_ADDRESS, storedConfig);
 
     if (storedConfig.magicNumber == CONFIG_MAGIC_NUMBER) {
-        return storedConfig.appConfig;
+        AppConfig cfg = storedConfig.appConfig;
+        // Backward compatibility defaults if new fields are unset/garbage
+        if (cfg.currentPatternId <= 0 || cfg.currentPatternId > 10) cfg.currentPatternId = DEFAULT_PATTERN_ID;
+        if (cfg.boxSeconds < 2 || cfg.boxSeconds > 60) cfg.boxSeconds = DEFAULT_BOX_SECONDS;
+        // For bools, assume 0/1; if eeprom random, normalize to defaults
+        if (cfg.startConfirmationHaptics != 0 && cfg.startConfirmationHaptics != 1) cfg.startConfirmationHaptics = DEFAULT_START_CONFIRMATION_HAPTICS;
+        if (cfg.abortSaveThresholdSeconds < 5 || cfg.abortSaveThresholdSeconds > 3600) cfg.abortSaveThresholdSeconds = DEFAULT_ABORT_SAVE_THRESHOLD_S;
+        return cfg;
     } else {
         AppConfig defaultConfig = {
             DEFAULT_MAX_ROUNDS,
@@ -55,7 +62,11 @@ AppConfig loadConfig() {
             DEFAULT_SILENT_PHASE_MAX_MIN,
             DEFAULT_SILENT_REMINDER_ENABLED,
             DEFAULT_SILENT_REMINDER_INTERVAL_MIN,
-            1 // currentRound
+            1, // currentRound
+            DEFAULT_PATTERN_ID,
+            DEFAULT_BOX_SECONDS,
+            DEFAULT_START_CONFIRMATION_HAPTICS,
+            DEFAULT_ABORT_SAVE_THRESHOLD_S
         };
         saveConfig(defaultConfig);
         return defaultConfig;

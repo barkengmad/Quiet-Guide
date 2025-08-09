@@ -10,6 +10,14 @@ enum class SessionState {
     BOOTING
 };
 
+// Patterns
+enum class BreathingPattern : int {
+    WIM_HOF = 1,
+    BOX = 2,
+    FOUR_SEVEN_EIGHT = 3,
+    RESONANT = 4
+};
+
 void setupSession();
 void loopSession();
 void finishBooting();

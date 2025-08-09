@@ -25,6 +25,10 @@ const int DEFAULT_IDLE_TIMEOUT_MIN = 3;
 const int DEFAULT_SILENT_PHASE_MAX_MIN = 30;
 const bool DEFAULT_SILENT_REMINDER_ENABLED = false;
 const int DEFAULT_SILENT_REMINDER_INTERVAL_MIN = 10;
+const bool DEFAULT_START_CONFIRMATION_HAPTICS = true;
+const int DEFAULT_ABORT_SAVE_THRESHOLD_S = 60;
+const int DEFAULT_BOX_SECONDS = 4; // Range 2..8
+const int DEFAULT_PATTERN_ID = 1; // 1=Wim Hof, 2=Box, 3=4-7-8, 4=Resonant (future)
 
 struct AppConfig {
     int maxRounds;
@@ -35,6 +39,11 @@ struct AppConfig {
     bool silentReminderEnabled;
     int silentReminderIntervalMinutes;
     int currentRound;
+    // New fields (appended for backward-compat):
+    int currentPatternId;              // 1=Wim Hof, 2=Box, ...
+    int boxSeconds;                    // 2..8
+    bool startConfirmationHaptics;     // announce type+value on start
+    int abortSaveThresholdSeconds;     // discard under this duration
 };
 
 #endif // CONFIG_H 

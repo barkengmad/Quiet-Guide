@@ -26,6 +26,17 @@ String formatDuration(int seconds) {
     }
 }
 
+// Compact mm-ss style: e.g., 2m00s
+String formatDurationCompact(int seconds) {
+    if (seconds < 0) seconds = 0;
+    int minutes = seconds / 60;
+    int rem = seconds % 60;
+    String out = String(minutes) + "m";
+    if (rem < 10) out += "0";
+    out += String(rem) + "s";
+    return out;
+}
+
 String getStatusString() {
     SessionState state = getCurrentState();
     switch (state) {
@@ -1082,21 +1093,24 @@ void handleClient(WiFiClient& client) {
                 // For non-Wim Hof patterns (or if no rounds recorded), show a single logical round (R1)
                 if (!printedRounds) {
                     content += "<strong>Rounds:</strong> 1<br>";
-                    String r1;
+                    String r1Label;
                     JsonObject settings = log["settings"].is<JsonObject>() ? log["settings"].as<JsonObject>() : JsonObject();
+                    int totalSec = log["total"].is<int>() ? log["total"].as<int>() : 0;
+                    int silentSec = log["silent"].is<int>() ? log["silent"].as<int>() : 0;
+                    int activeSec = totalSec - silentSec; if (activeSec < 0) activeSec = 0;
                     switch (patternId) {
                         case 2: { // Box
                             int s = settings["boxSeconds"].is<int>() ? settings["boxSeconds"].as<int>() : 0;
                             if (s <= 0) s = 4; // sensible fallback
-                            r1 = "Box Seconds = " + String(s) + "s";
+                            r1Label = "Box=" + String(s) + "s";
                             break;
                         }
                         case 3: { // 4-7-8
-                            r1 = "In 4s, Hold 7s, Out 8s";
+                            r1Label = "4·7·8";
                             break;
                         }
                         case 4: { // Resonant 6:6
-                            r1 = "In 6s, Out 6s";
+                            r1Label = "Resonant(6:6)";
                             break;
                         }
                         case 5: { // Custom
@@ -1104,31 +1118,31 @@ void handleClient(WiFiClient& client) {
                             int hi  = settings["customHoldInSeconds"].is<int>() ? settings["customHoldInSeconds"].as<int>() : 0;
                             int exh = settings["customExhaleSeconds"].is<int>() ? settings["customExhaleSeconds"].as<int>() : 0;
                             int ho  = settings["customHoldOutSeconds"].is<int>() ? settings["customHoldOutSeconds"].as<int>() : 0;
-                            bool first = true;
-                            if (inh > 0) { r1 += (first?"":"; "); r1 += "In "; r1 += String(inh); r1 += "s"; first=false; }
-                            if (hi  > 0) { r1 += (first?"":"; "); r1 += "HoldIn "; r1 += String(hi);  r1 += "s"; first=false; }
-                            if (exh > 0) { r1 += (first?"":"; "); r1 += "Out "; r1 += String(exh); r1 += "s"; first=false; }
-                            if (ho  > 0) { r1 += (first?"":"; "); r1 += "HoldOut "; r1 += String(ho);  r1 += "s"; first=false; }
-                            if (r1.length() == 0) r1 = "No phases configured";
+                            bool first = true; String seq = "";
+                            if (inh > 0) { seq += (first?"":"; "); seq += "In "; seq += String(inh); seq += "s"; first=false; }
+                            if (hi  > 0) { seq += (first?"":"; "); seq += "HoldIn "; seq += String(hi);  seq += "s"; first=false; }
+                            if (exh > 0) { seq += (first?"":"; "); seq += "Out "; seq += String(exh); seq += "s"; first=false; }
+                            if (ho  > 0) { seq += (first?"":"; "); seq += "HoldOut "; seq += String(ho);  seq += "s"; first=false; }
+                            r1Label = (seq.length() > 0) ? (String("Custom(") + seq + ")") : String("Custom");
                             break;
                         }
                         case 6: { // Dynamic
                             int ai = settings["avgInhaleSec"].is<int>() ? settings["avgInhaleSec"].as<int>() : 0;
                             int ae = settings["avgExhaleSec"].is<int>() ? settings["avgExhaleSec"].as<int>() : 0;
                             if (ai > 0 || ae > 0) {
-                                r1 = "~In "; r1 += String(ai); r1 += "s, ~Out "; r1 += String(ae); r1 += "s";
+                                r1Label = "Dynamic(~In " + String(ai) + "s, ~Out " + String(ae) + "s)";
                             } else {
-                                r1 = "Dynamic cadence (teaching/guided)";
+                                r1Label = "Dynamic";
                             }
                             break;
                         }
                         case 1: // Wim Hof with no recorded rounds (fallback)
                         default: {
-                            r1 = "Summary not available";
+                            r1Label = "Summary not available";
                             break;
                         }
                     }
-                    content += "R1: " + r1 + "<br>";
+                    content += "R1: " + r1Label + " Duration=" + formatDurationCompact(activeSec) + "<br>";
                 }
 
                 content += "<button class='delete-btn' onclick='if(confirmDelete(" + String(sessionIndex) + ")) window.location.href=\"/delete-session?index=" + String(sessionIndex) + "\"'>Delete Session</button>";

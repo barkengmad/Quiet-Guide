@@ -288,8 +288,10 @@ void handleClient(WiFiClient& client) {
         for (int i=0;i<6;i++){
             int id = config.patternOrder[i]; if (id<1||id>6) id=i+1;
             String li = "<li draggable='true' data-id='" + String(id) + "' style='display:flex;align-items:center;gap:8px;border:1px solid #ddd;background:#fff;border-radius:6px;padding:8px;margin:6px 0'>";
-            li += "<span style='cursor:grab'>↕</span>";
+            // Radio + label left aligned
             li += "<label style='display:flex;align-items:center;gap:8px;flex:1;margin:0'><input type='radio' name='currentPatternId' value='" + String(id) + "'" + (config.currentPatternId==id?" checked":"") + "> <span>" + labelForIdDash(id) + "</span></label>";
+            // Drag handle moved after label
+            li += "<span style='cursor:grab'>↕</span>";
             const char* key = id==1?"includeWimHof":id==2?"includeBox":id==3?"include478":id==4?"includeResonant":id==5?"includeCustom":"includeDynamic";
             li += "<label style='display:flex;align-items:center;gap:6px'><input type='checkbox' name='" + String(key) + "' value='1'" + (includeForIdDash(id)?" checked":"") + "> Include</label>";
             const char* silentKey = id==1?"silentAfterWimHof":id==2?"silentAfterBox":id==3?"silentAfter478":id==4?"silentAfterResonant":id==5?"silentAfterCustom":"silentAfterDynamic";

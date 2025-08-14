@@ -277,12 +277,14 @@ void handleClient(WiFiClient& client) {
         content += "<h3>Breathing Patterns</h3>";
         content += "<form id='patternForm' method='POST' action='/save'>";
         content += "<div style='background:#f8f9fa;border-radius:6px;padding:8px 10px;margin-bottom:16px'>";
-        content += "<p style='margin:6px 0;color:#555;font-size:13px'>Drag to reorder. Select one as current. Tick to include in rotation.</p>";
+        content += "<p style='margin:6px 0;color:#555;font-size:13px'>Drag to reorder. Select one as current. Tick to include in rotation. Choose whether to include a silent phase at the end.</p>";
         content += "<ul id='patternList' style='list-style:none;padding:0;margin:0'>";
         auto labelForIdDash = [](int id)->String{
             switch(id){case 1:return "[1] Wim Hof";case 2:return "[2] Box";case 3:return "[3] 4\u00B7 7\u00B7 8";case 4:return "[4] Resonant (6:6)";case 5:return "[5] Custom";case 6:return "[6] Dynamic";}return String("[")+String(id)+"]";};
         auto includeForIdDash = [&](int id)->bool{
             if(id==1) return config.includeWimHof; if(id==2) return config.includeBox; if(id==3) return config.include478; if(id==4) return config.includeResonant; if(id==5) return config.includeCustom; return config.includeDynamic; };
+        auto silentForIdDash = [&](int id)->bool{
+            if(id==1) return config.silentAfterWimHof; if(id==2) return config.silentAfterBox; if(id==3) return config.silentAfter478; if(id==4) return config.silentAfterResonant; if(id==5) return config.silentAfterCustom; return config.silentAfterDynamic; };
         for (int i=0;i<6;i++){
             int id = config.patternOrder[i]; if (id<1||id>6) id=i+1;
             String li = "<li draggable='true' data-id='" + String(id) + "' style='display:flex;align-items:center;gap:8px;border:1px solid #ddd;background:#fff;border-radius:6px;padding:8px;margin:6px 0'>";
@@ -291,6 +293,8 @@ void handleClient(WiFiClient& client) {
             li += "<label style='display:flex;align-items:center;gap:6px'><input type='radio' name='currentPatternId' value='" + String(id) + "'" + (config.currentPatternId==id?" checked":"") + "> Select</label>";
             const char* key = id==1?"includeWimHof":id==2?"includeBox":id==3?"include478":id==4?"includeResonant":id==5?"includeCustom":"includeDynamic";
             li += "<label style='display:flex;align-items:center;gap:6px'><input type='checkbox' name='" + String(key) + "' value='1'" + (includeForIdDash(id)?" checked":"") + "> Include</label>";
+            const char* silentKey = id==1?"silentAfterWimHof":id==2?"silentAfterBox":id==3?"silentAfter478":id==4?"silentAfterResonant":id==5?"silentAfterCustom":"silentAfterDynamic";
+            li += "<label style='display:flex;align-items:center;gap:6px'><input type='checkbox' name='" + String(silentKey) + "' value='1'" + (silentForIdDash(id)?" checked":"") + "> Silent at end</label>";
             li += "</li>";
             content += li;
         }
@@ -312,8 +316,6 @@ void handleClient(WiFiClient& client) {
             content += "<p><strong>Max Rounds:</strong> " + String(config.maxRounds) + "</p>";
             content += "<p><strong>Deep Breathing:</strong> " + String(config.deepBreathingSeconds) + "s</p>";
             content += "<p><strong>Recovery:</strong> " + String(config.recoverySeconds) + "s</p>";
-            content += "<p><strong>Silent Phase Max:</strong> " + String(config.silentPhaseMaxMinutes) + " min</p>";
-            content += "<p><strong>Silent Reminders:</strong> " + String(config.silentReminderEnabled ? "On" : "Off") + "</p>";
         } else if (config.currentPatternId == 2) {
             content += "<p><strong>Box Seconds:</strong> " + String(config.boxSeconds) + "s</p>";
         } else if (config.currentPatternId == 3) {
@@ -325,6 +327,12 @@ void handleClient(WiFiClient& client) {
         } else if (config.currentPatternId == 6) {
             content += "<p><strong>Dynamic:</strong> Tap to teach inhale/exhale cadence; device guides at learned rhythm.</p>";
         }
+        // Silent Phase common settings
+        content += "<hr style='border:none;border-top:1px solid #e0e0e0;margin:10px 0'>";
+        content += "<h4 style='margin:8px 0'>Silent Phase</h4>";
+        content += "<p><strong>Silent Max:</strong> " + String(config.silentPhaseMaxMinutes) + " min</p>";
+        content += "<p><strong>Silent Reminders:</strong> " + String(config.silentReminderEnabled ? "On" : "Off") + "</p>";
+        content += "<p><strong>Reminder Interval:</strong> " + String(config.silentReminderIntervalMinutes) + " min</p>";
         content += "</div>";
 
         // Device Settings
@@ -332,6 +340,12 @@ void handleClient(WiFiClient& client) {
         content += "<p><strong>Idle Timeout:</strong> " + String(config.idleTimeoutMinutes) + " min</p>";
         content += "<p><strong>Start Confirmation Haptic:</strong> " + String(config.startConfirmationHaptics ? "On" : "Off") + "</p>";
         content += "<p><strong>Keep partial if ≥:</strong> " + String(config.abortSaveThresholdSeconds) + "s</p>";
+        content += "<p><strong>Guided Breathing Duration (non‑Wim Hof):</strong> " + String(config.guidedBreathingMinutes) + " min</p>";
+        // Silent Phase
+        content += "<h3>Silent Phase</h3>";
+        content += "<p><strong>Silent Max:</strong> " + String(config.silentPhaseMaxMinutes) + " min</p>";
+        content += "<p><strong>Silent Reminders:</strong> " + String(config.silentReminderEnabled ? "On" : "Off") + "</p>";
+        content += "<p><strong>Reminder Interval:</strong> " + String(config.silentReminderIntervalMinutes) + " min</p>";
         response = generateHTML("Dashboard", content);
         
     } else if (request.indexOf("GET /moon") >= 0) {
@@ -699,7 +713,12 @@ void handleClient(WiFiClient& client) {
         // Configuration form
         AppConfig config = loadConfig();
         String content = "<h2>Configuration</h2>";
+        // Saved banner if redirected with saved=1
+        if (request.indexOf("saved=1") >= 0) {
+            content += "<div class='status'>Saved successfully!</div>";
+        }
         content += "<form method='POST' action='/save'>";
+        content += "<input type='hidden' name='returnTo' value='/config'/>";
 
         // Breathing Patterns removed (managed on Dashboard)
 
@@ -714,6 +733,19 @@ void handleClient(WiFiClient& client) {
         content += "</select></div>";
         content += "<div class='form-group'><label>Keep partial session if ≥ (seconds):</label>";
         content += "<input type='number' name='abortSaveThresholdSeconds' min='10' max='3600' value='" + String(config.abortSaveThresholdSeconds) + "'></div>";
+        content += "<div class='form-group'><label>Guided Breathing Duration (non‑Wim Hof) (1–120 min):</label>";
+        content += "<input type='number' name='guidedBreathingMinutes' min='1' max='120' value='" + String(config.guidedBreathingMinutes) + "'></div>";
+        // Silent Phase block
+        content += "<h3>Silent Phase</h3>";
+        content += "<div class='form-group'><label>Silent Max (5-120 min):</label>";
+        content += "<input type='number' name='silentPhaseMaxMinutes' min='5' max='120' value='" + String(config.silentPhaseMaxMinutes) + "'></div>";
+        content += "<div class='form-group'><label>Silent Reminders:</label>";
+        content += "<select name='silentReminderEnabled'>";
+        content += "<option value='1'" + String(config.silentReminderEnabled ? " selected" : "") + ">Enabled</option>";
+        content += "<option value='0'" + String(!config.silentReminderEnabled ? " selected" : "") + ">Disabled</option>";
+        content += "</select></div>";
+        content += "<div class='form-group'><label>Reminder Interval (1-30 min):</label>";
+        content += "<input type='number' name='silentReminderIntervalMinutes' min='1' max='30' value='" + String(config.silentReminderIntervalMinutes) + "'></div>";
         // Current pattern dropdown removed; use radios above
 
         // Wim Hof Settings
@@ -874,7 +906,8 @@ void handleClient(WiFiClient& client) {
             config.boxSeconds = val;
         }
         if (body.indexOf("startConfirmationHaptics=") >= 0) {
-            int start = body.indexOf("startConfirmationHaptics=") + 25;
+            String key = "startConfirmationHaptics=";
+            int start = body.indexOf(key) + key.length();
             int end = body.indexOf("&", start);
             if (end == -1) end = body.length();
             config.startConfirmationHaptics = (body.substring(start, end).toInt() == 1);
@@ -886,6 +919,15 @@ void handleClient(WiFiClient& client) {
             int val = body.substring(start, end).toInt();
             if (val < 10) val = 10; if (val > 3600) val = 3600;
             config.abortSaveThresholdSeconds = val;
+        }
+        if (body.indexOf("guidedBreathingMinutes=") >= 0) {
+            String key = "guidedBreathingMinutes=";
+            int start = body.indexOf(key) + key.length();
+            int end = body.indexOf("&", start);
+            if (end == -1) end = body.length();
+            int val = body.substring(start, end).toInt();
+            if (val < 1) val = 1; if (val > 120) val = 120;
+            config.guidedBreathingMinutes = val;
         }
         if (body.indexOf("customInhaleSeconds=") >= 0) {
             int start = body.indexOf("customInhaleSeconds=") + 21;
@@ -947,33 +989,50 @@ void handleClient(WiFiClient& client) {
             for (int i=0;i<6;i++) config.patternOrder[i] = out[i];
             // patternOrder parsed
         }
-        // Checkboxes: presence means include=1; absence means 0
-        config.includeWimHof = body.indexOf("includeWimHof=") >= 0;
-        config.includeBox = body.indexOf("includeBox=") >= 0;
-        config.include478 = body.indexOf("include478=") >= 0;
-        config.includeResonant = body.indexOf("includeResonant=") >= 0;
-        config.includeCustom = body.indexOf("includeCustom=") >= 0;
-        config.includeDynamic = body.indexOf("includeDynamic=") >= 0;
+        // Only update pattern include/silent flags when the pattern list form is submitted
+        bool hasPatternList = body.indexOf("patternOrder=") >= 0;
+        if (hasPatternList) {
+            // Checkboxes: presence means include=1; absence means 0
+            config.includeWimHof = body.indexOf("includeWimHof=") >= 0;
+            config.includeBox = body.indexOf("includeBox=") >= 0;
+            config.include478 = body.indexOf("include478=") >= 0;
+            config.includeResonant = body.indexOf("includeResonant=") >= 0;
+            config.includeCustom = body.indexOf("includeCustom=") >= 0;
+            config.includeDynamic = body.indexOf("includeDynamic=") >= 0;
+            // Per-pattern silent flags
+            config.silentAfterWimHof = body.indexOf("silentAfterWimHof=") >= 0;
+            config.silentAfterBox = body.indexOf("silentAfterBox=") >= 0;
+            config.silentAfter478 = body.indexOf("silentAfter478=") >= 0;
+            config.silentAfterResonant = body.indexOf("silentAfterResonant=") >= 0;
+            config.silentAfterCustom = body.indexOf("silentAfterCustom=") >= 0;
+            config.silentAfterDynamic = body.indexOf("silentAfterDynamic=") >= 0;
+        }
         // includes parsed
         
         // Save configuration
-        
         saveConfig(config);
+        // Ensure session uses latest persisted values immediately
+        reloadSessionConfig();
         // Saved
         
         // Verification logging removed
         
-        // If returnTo=/, redirect back to dashboard with saved flag
-        if (body.indexOf("returnTo=%2F") >= 0 || body.indexOf("returnTo=/") >= 0) {
+        // Redirect to the requested page with saved flag
+        int rtIdx = body.indexOf("returnTo=");
+        if (rtIdx >= 0) {
+            int start = rtIdx + 9;
+            int end = body.indexOf('&', start);
+            String dest = (end == -1) ? body.substring(start) : body.substring(start, end);
+            if (dest.length() == 0) dest = "/";
+            // dest may be URL-encoded; minimal decode for %2F
+            dest.replace("%2F", "/");
+            String loc = dest;
+            if (loc.indexOf('?') >= 0) loc += "&saved=1"; else loc += "?saved=1";
             client.println("HTTP/1.1 302 Found");
-            client.println("Location: /?saved=1");
+            client.println("Location: " + loc);
             client.println("Connection: close");
             client.println();
             return;
-        } else {
-            String content = "<div class='status'>Settings saved successfully!</div>";
-            content += "<p><a href='/config'>Back to Settings</a></p>";
-            response = generateHTML("Saved", content);
         }
         
     } else if (request.indexOf("GET /logs") >= 0) {
@@ -998,20 +1057,79 @@ void handleClient(WiFiClient& client) {
                 content += "<div class='logs'>";
                 content += "<strong>Date:</strong> " + String(log["date"].as<const char*>()) + " ";
                 content += "<strong>Time:</strong> " + String(log["start_time"].as<const char*>()) + "<br>";
+                content += "<strong>Pattern:</strong> " + String(log["pattern_name"].is<const char*>() ? log["pattern_name"].as<const char*>() : "Unknown") + "<br>";
                 content += "<strong>Total Duration:</strong> " + formatDuration(log["total"].as<int>()) + " ";
                 content += "<strong>Silent Phase:</strong> " + formatDuration(log["silent"].as<int>()) + "<br>";
-                
+
+                int patternId = log["pattern_id"].is<int>() ? log["pattern_id"].as<int>() : 0;
+                bool printedRounds = false;
                 if (log["rounds"].is<JsonArray>()) {
                     JsonArray rounds = log["rounds"];
-                    content += "<strong>Rounds:</strong> " + String(rounds.size()) + "<br>";
-                    for (size_t i = 0; i < rounds.size(); i++) {
-                        JsonObject round = rounds[i];
-                        content += "R" + String(i + 1) + ": ";
-                        content += "Deep=" + formatDuration(round["deep"].as<int>()) + " ";
-                        content += "Hold=" + formatDuration(round["hold"].as<int>()) + " ";
-                        content += "Recover=" + formatDuration(round["recover"].as<int>()) + "<br>";
+                    if (rounds.size() > 0) {
+                        content += "<strong>Rounds:</strong> " + String(rounds.size()) + "<br>";
+                        for (size_t i = 0; i < rounds.size(); i++) {
+                            JsonObject round = rounds[i];
+                            content += "R" + String(i + 1) + ": ";
+                            content += "Deep=" + formatDuration(round["deep"].as<int>()) + " ";
+                            content += "Hold=" + formatDuration(round["hold"].as<int>()) + " ";
+                            content += "Recover=" + formatDuration(round["recover"].as<int>()) + "<br>";
+                        }
+                        printedRounds = true;
                     }
                 }
+
+                // For non-Wim Hof patterns (or if no rounds recorded), show a single logical round (R1)
+                if (!printedRounds) {
+                    content += "<strong>Rounds:</strong> 1<br>";
+                    String r1;
+                    JsonObject settings = log["settings"].is<JsonObject>() ? log["settings"].as<JsonObject>() : JsonObject();
+                    switch (patternId) {
+                        case 2: { // Box
+                            int s = settings["boxSeconds"].is<int>() ? settings["boxSeconds"].as<int>() : 0;
+                            if (s <= 0) s = 4; // sensible fallback
+                            r1 = "Box Seconds = " + String(s) + "s";
+                            break;
+                        }
+                        case 3: { // 4-7-8
+                            r1 = "In 4s, Hold 7s, Out 8s";
+                            break;
+                        }
+                        case 4: { // Resonant 6:6
+                            r1 = "In 6s, Out 6s";
+                            break;
+                        }
+                        case 5: { // Custom
+                            int inh = settings["customInhaleSeconds"].is<int>() ? settings["customInhaleSeconds"].as<int>() : 0;
+                            int hi  = settings["customHoldInSeconds"].is<int>() ? settings["customHoldInSeconds"].as<int>() : 0;
+                            int exh = settings["customExhaleSeconds"].is<int>() ? settings["customExhaleSeconds"].as<int>() : 0;
+                            int ho  = settings["customHoldOutSeconds"].is<int>() ? settings["customHoldOutSeconds"].as<int>() : 0;
+                            bool first = true;
+                            if (inh > 0) { r1 += (first?"":"; "); r1 += "In "; r1 += String(inh); r1 += "s"; first=false; }
+                            if (hi  > 0) { r1 += (first?"":"; "); r1 += "HoldIn "; r1 += String(hi);  r1 += "s"; first=false; }
+                            if (exh > 0) { r1 += (first?"":"; "); r1 += "Out "; r1 += String(exh); r1 += "s"; first=false; }
+                            if (ho  > 0) { r1 += (first?"":"; "); r1 += "HoldOut "; r1 += String(ho);  r1 += "s"; first=false; }
+                            if (r1.length() == 0) r1 = "No phases configured";
+                            break;
+                        }
+                        case 6: { // Dynamic
+                            int ai = settings["avgInhaleSec"].is<int>() ? settings["avgInhaleSec"].as<int>() : 0;
+                            int ae = settings["avgExhaleSec"].is<int>() ? settings["avgExhaleSec"].as<int>() : 0;
+                            if (ai > 0 || ae > 0) {
+                                r1 = "~In "; r1 += String(ai); r1 += "s, ~Out "; r1 += String(ae); r1 += "s";
+                            } else {
+                                r1 = "Dynamic cadence (teaching/guided)";
+                            }
+                            break;
+                        }
+                        case 1: // Wim Hof with no recorded rounds (fallback)
+                        default: {
+                            r1 = "Summary not available";
+                            break;
+                        }
+                    }
+                    content += "R1: " + r1 + "<br>";
+                }
+
                 content += "<button class='delete-btn' onclick='if(confirmDelete(" + String(sessionIndex) + ")) window.location.href=\"/delete-session?index=" + String(sessionIndex) + "\"'>Delete Session</button>";
                 content += "</div>";
             }

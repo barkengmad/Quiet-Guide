@@ -50,6 +50,12 @@ void vibrateValueShort(int count) {
     }
 }
 
+void vibratePhaseCue(PhaseCue phase) {
+    // For now, all phases use a short 100ms cue. This can be customized later.
+    (void)phase; // suppress unused warning
+    vibrate(100);
+}
+
 void vibrateIPAddress(IPAddress ip) {
     static bool isRunning = false;
     

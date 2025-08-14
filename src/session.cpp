@@ -64,6 +64,14 @@ static int avg_exhale_sec = 0;
 static unsigned long dynamic_phase_start_ms = 0;
 static bool dynamic_inhale_phase = true; // running inhale/exhale in guided
 
+// Box mode runtime
+static unsigned long box_phase_start_ms = 0;
+static int box_phase_index = 0; // 0=inhale,1=hold-in,2=exhale,3=hold-out
+// 4-7-8 and 6:6 runtime
+static unsigned long guided_phase_start_ms = 0;
+static int guided_phase_index = 0; // pattern-specific indexing
+static unsigned long guided_session_start_ms = 0; // overall guided duration start (non-Wim Hof)
+
 static int getPatternValueForPulse() {
     if (config.currentPatternId == 2) { // Box seconds
         int val = config.boxSeconds;
@@ -221,8 +229,30 @@ void enterState(SessionState newState) {
             break;
         case SessionState::CUSTOM_RUNNING:
             Serial.println("State: CUSTOM_RUNNING");
-            vibrate(100); // boundary cue at session start
+            vibratePhaseCue(PhaseCue::Inhale); // boundary cue at session start
             phase_start_time = millis();
+            guided_session_start_ms = millis();
+            break;
+        case SessionState::BOX_RUNNING:
+            Serial.println("State: BOX_RUNNING");
+            box_phase_index = 0;
+            box_phase_start_ms = millis();
+            vibratePhaseCue(PhaseCue::Inhale);
+            guided_session_start_ms = millis();
+            break;
+        case SessionState::FOURSEVENEIGHT_RUNNING:
+            Serial.println("State: 4-7-8_RUNNING");
+            guided_phase_index = 0; // 0=inhale(4),1=hold(7),2=exhale(8)
+            guided_phase_start_ms = millis();
+            vibratePhaseCue(PhaseCue::Inhale);
+            guided_session_start_ms = millis();
+            break;
+        case SessionState::RESONANT_RUNNING:
+            Serial.println("State: RESONANT_RUNNING");
+            guided_phase_index = 0; // 0=inhale(6),1=exhale(6)
+            guided_phase_start_ms = millis();
+            vibratePhaseCue(PhaseCue::Inhale);
+            guided_session_start_ms = millis();
             break;
         case SessionState::DYNAMIC_TEACHING:
             Serial.println("State: DYNAMIC_TEACHING");
@@ -237,50 +267,108 @@ void enterState(SessionState newState) {
             dynamic_inhale_phase = true;
             dynamic_phase_start_ms = millis();
             vibrate(100);
+            guided_session_start_ms = millis();
             break;
     }
 }
 
 void saveCurrentSession() {
-    if (current_session_round > 0) {
-        Serial.println("DEBUG: Saving session data...");
-        time_t now = getEpochTime();
-        struct tm* timeinfo = localtime(&now);
-        char date_buf[11];
-        char time_buf[9];
-        strftime(date_buf, sizeof(date_buf), "%Y-%m-%d", timeinfo);
-        strftime(time_buf, sizeof(time_buf), "%H:%M:%S", timeinfo);
-        
-        session_log_doc["date"] = date_buf;
-        session_log_doc["start_time"] = time_buf;
+    Serial.println("DEBUG: Saving session data...");
+    time_t now = getEpochTime();
+    struct tm* timeinfo = localtime(&now);
+    char date_buf[11];
+    char time_buf[9];
+    strftime(date_buf, sizeof(date_buf), "%Y-%m-%d", timeinfo);
+    strftime(time_buf, sizeof(time_buf), "%H:%M:%S", timeinfo);
 
-        // Calculate silent phase duration if we're ending from silent state
-        unsigned long silent_duration = 0;
-        if (currentState == SessionState::SILENT) {
-            silent_duration = (millis() - state_enter_time) / 1000;
-        }
+    session_log_doc["date"] = date_buf;
+    session_log_doc["start_time"] = time_buf;
 
-        // Calculate total duration by summing all round times plus silent phase
-        unsigned long total_duration = silent_duration;
+    // Pattern metadata
+    session_log_doc["pattern_id"] = config.currentPatternId;
+    const char* pattern_name = "Unknown";
+    switch (config.currentPatternId) {
+        case 1: pattern_name = "Wim Hof"; break;
+        case 2: pattern_name = "Box"; break;
+        case 3: pattern_name = "4-7-8"; break;
+        case 4: pattern_name = "Resonant"; break;
+        case 5: pattern_name = "Custom"; break;
+        case 6: pattern_name = "Dynamic"; break;
+    }
+    session_log_doc["pattern_name"] = pattern_name;
+
+    // Calculate silent phase duration if we're ending from silent state
+    unsigned long silent_duration = 0;
+    if (currentState == SessionState::SILENT) {
+        silent_duration = (millis() - state_enter_time) / 1000;
+    }
+
+    // Total duration: prefer explicit rounds sum for Wim Hof, otherwise elapsed since start
+    unsigned long total_duration = 0;
+    if (rounds_log.size() > 0) {
         for (size_t i = 0; i < rounds_log.size(); i++) {
             JsonObject round = rounds_log[i];
             total_duration += round["deep"].as<unsigned long>();
             total_duration += round["hold"].as<unsigned long>();
             total_duration += round["recover"].as<unsigned long>();
         }
-
-        session_log_doc["silent"] = silent_duration;
-        session_log_doc["total"] = total_duration;
-
-        Serial.print("DEBUG: Session log JSON: ");
-        serializeJson(session_log_doc, Serial);
-        Serial.println();
-
-        saveSessionLog(session_log_doc.as<JsonObject>());
-        Serial.println("DEBUG: Session saved to storage");
+        total_duration += silent_duration;
     } else {
-        Serial.println("DEBUG: No session data to save (current_session_round = 0)");
+        total_duration = (millis() - session_start_time_ms) / 1000UL;
     }
+
+    // Apply keep-partial threshold
+    if (total_duration < (unsigned long)config.abortSaveThresholdSeconds) {
+        Serial.println("DEBUG: Discarding session under threshold.");
+        session_log_doc.clear();
+        rounds_log = session_log_doc["rounds"].to<JsonArray>();
+        return;
+    }
+
+    session_log_doc["silent"] = silent_duration;
+    session_log_doc["total"] = total_duration;
+
+    // Pattern-specific settings snapshot
+    JsonObject settings = session_log_doc["settings"].to<JsonObject>();
+    if (config.currentPatternId == 1) {
+        settings["rounds_selected"] = config.currentRound;
+        settings["deepBreathingSeconds"] = config.deepBreathingSeconds;
+        settings["recoverySeconds"] = config.recoverySeconds;
+        settings["silentAfter"] = config.silentAfterWimHof;
+    } else if (config.currentPatternId == 2) {
+        settings["boxSeconds"] = config.boxSeconds;
+        settings["guidedMinutes"] = config.guidedBreathingMinutes;
+        settings["silentAfter"] = config.silentAfterBox;
+    } else if (config.currentPatternId == 3) {
+        settings["guidedMinutes"] = config.guidedBreathingMinutes;
+        settings["silentAfter"] = config.silentAfter478;
+    } else if (config.currentPatternId == 4) {
+        settings["guidedMinutes"] = config.guidedBreathingMinutes;
+        settings["silentAfter"] = config.silentAfterResonant;
+    } else if (config.currentPatternId == 5) {
+        settings["customInhaleSeconds"] = config.customInhaleSeconds;
+        settings["customHoldInSeconds"] = config.customHoldInSeconds;
+        settings["customExhaleSeconds"] = config.customExhaleSeconds;
+        settings["customHoldOutSeconds"] = config.customHoldOutSeconds;
+        settings["guidedMinutes"] = config.guidedBreathingMinutes;
+        settings["silentAfter"] = config.silentAfterCustom;
+    } else if (config.currentPatternId == 6) {
+        settings["avgInhaleSec"] = avg_inhale_sec;
+        settings["avgExhaleSec"] = avg_exhale_sec;
+        settings["guidedMinutes"] = config.guidedBreathingMinutes;
+        settings["silentAfter"] = config.silentAfterDynamic;
+    }
+    settings["silentPhaseMaxMinutes"] = config.silentPhaseMaxMinutes;
+    settings["silentReminderEnabled"] = config.silentReminderEnabled;
+    settings["silentReminderIntervalMinutes"] = config.silentReminderIntervalMinutes;
+
+    Serial.print("DEBUG: Session log JSON: ");
+    serializeJson(session_log_doc, Serial);
+    Serial.println();
+
+    saveSessionLog(session_log_doc.as<JsonObject>());
+    Serial.println("DEBUG: Session saved to storage");
+
     // Clear log for next session
     session_log_doc.clear();
     rounds_log = session_log_doc["rounds"].to<JsonArray>();
@@ -386,8 +474,11 @@ void loopSession() {
                 if (config.currentPatternId == 1) {
                     enterState(SessionState::DEEP_BREATHING);
                 } else if (config.currentPatternId == 2) {
-                    // Box breathing not yet implemented as separate run flow; placeholder could reuse Wim Hof engine in future
-                    enterState(SessionState::DEEP_BREATHING);
+                    enterState(SessionState::BOX_RUNNING);
+                } else if (config.currentPatternId == 3) {
+                    enterState(SessionState::FOURSEVENEIGHT_RUNNING);
+                } else if (config.currentPatternId == 4) {
+                    enterState(SessionState::RESONANT_RUNNING);
                 } else if (config.currentPatternId == 5) {
                     // Build custom phases list
                     customPhaseCount = 0;
@@ -505,7 +596,7 @@ void loopSession() {
                  if (current_session_round < config.currentRound) {
                     enterState(SessionState::DEEP_BREATHING);
                 } else {
-                    enterState(SessionState::SILENT);
+                    if (config.silentAfterWimHof) enterState(SessionState::SILENT); else enterState(SessionState::IDLE);
                 }
                 short_press_detected = false;
             }
@@ -517,7 +608,7 @@ void loopSession() {
                  if (current_session_round < config.currentRound) {
                     enterState(SessionState::DEEP_BREATHING);
                 } else {
-                    enterState(SessionState::SILENT);
+                    if (config.silentAfterWimHof) enterState(SessionState::SILENT); else enterState(SessionState::IDLE);
                 }
             }
             // Global long press abort for active sessions
@@ -589,13 +680,115 @@ void loopSession() {
             if (elapsed >= (unsigned long)dur) {
                 // Advance to next phase
                 customPhaseIndex = (customPhaseIndex + 1) % customPhaseCount;
-                vibrate(100);
+                // Next phase cue - map index to PhaseCue
+                PhaseCue cue = (customPhases[customPhaseIndex].name[0]=='I') ? PhaseCue::Inhale :
+                                 (customPhases[customPhaseIndex].name[0]=='H' && customPhases[customPhaseIndex].name[4]=='I') ? PhaseCue::HoldIn :
+                                 (customPhases[customPhaseIndex].name[0]=='E') ? PhaseCue::Exhale :
+                                 PhaseCue::HoldOut;
+                vibratePhaseCue(cue);
                 phase_start_time = millis();
+                // End at boundary if guided duration elapsed
+                if (config.guidedBreathingMinutes > 0) {
+                    unsigned long guidedElapsed = (millis() - guided_session_start_ms) / 1000UL;
+                    if (guidedElapsed >= (unsigned long)config.guidedBreathingMinutes * 60UL) {
+                        if (config.silentAfterCustom) enterState(SessionState::SILENT); else enterState(SessionState::IDLE);
+                        return;
+                    }
+                }
             }
+            
             // Abort handling
             if (released_long_press || released_very_long_press) {
                 released_long_press = released_very_long_press = false;
                 Serial.println("Custom: stopped by long press");
+                enterState(SessionState::IDLE);
+                return;
+            }
+            break;
+        }
+
+        case SessionState::BOX_RUNNING: {
+            // Four equal phases of length config.boxSeconds, each boundary short buzz
+            unsigned long elapsed = (millis() - box_phase_start_ms) / 1000;
+            int sec = config.boxSeconds;
+            if (sec < 2) sec = 2; if (sec > 8) sec = 8;
+            if (elapsed >= (unsigned long)sec) {
+                box_phase_index = (box_phase_index + 1) % 4;
+                PhaseCue cue = (box_phase_index == 0) ? PhaseCue::Inhale :
+                               (box_phase_index == 1) ? PhaseCue::HoldIn :
+                               (box_phase_index == 2) ? PhaseCue::Exhale :
+                                                        PhaseCue::HoldOut;
+                vibratePhaseCue(cue);
+                box_phase_start_ms = millis();
+                // End at boundary if guided duration elapsed
+                if (config.guidedBreathingMinutes > 0) {
+                    unsigned long guidedElapsed = (millis() - guided_session_start_ms) / 1000UL;
+                    if (guidedElapsed >= (unsigned long)config.guidedBreathingMinutes * 60UL) {
+                        if (config.silentAfterBox) enterState(SessionState::SILENT); else enterState(SessionState::IDLE);
+                        return;
+                    }
+                }
+            }
+            // Abort handling
+            if (released_long_press || released_very_long_press) {
+                released_long_press = released_very_long_press = false;
+                Serial.println("Box: stopped by long press");
+                enterState(SessionState::IDLE);
+                return;
+            }
+            break;
+        }
+
+        case SessionState::FOURSEVENEIGHT_RUNNING: {
+            // Phases: Inhale 4s -> Hold 7s -> Exhale 8s -> repeat
+            unsigned long elapsed = (millis() - guided_phase_start_ms) / 1000;
+            int target = (guided_phase_index == 0) ? 4 : (guided_phase_index == 1) ? 7 : 8;
+            if (elapsed >= (unsigned long)target) {
+                guided_phase_index = (guided_phase_index + 1) % 3;
+                PhaseCue cue = (guided_phase_index == 0) ? PhaseCue::Inhale :
+                               (guided_phase_index == 1) ? PhaseCue::HoldIn :
+                                                           PhaseCue::Exhale;
+                vibratePhaseCue(cue);
+                guided_phase_start_ms = millis();
+                // End at boundary if guided duration elapsed
+                if (config.guidedBreathingMinutes > 0) {
+                    unsigned long guidedElapsed = (millis() - guided_session_start_ms) / 1000UL;
+                    if (guidedElapsed >= (unsigned long)config.guidedBreathingMinutes * 60UL) {
+                        if (config.silentAfter478) enterState(SessionState::SILENT); else enterState(SessionState::IDLE);
+                        return;
+                    }
+                }
+            }
+            if (released_long_press || released_very_long_press) {
+                released_long_press = released_very_long_press = false;
+                Serial.println("4-7-8: stopped by long press");
+                enterState(SessionState::IDLE);
+                return;
+            }
+            break;
+        }
+
+        case SessionState::RESONANT_RUNNING: {
+            // Phases: Inhale 6s -> Exhale 6s -> repeat
+            unsigned long elapsed = (millis() - guided_phase_start_ms) / 1000;
+            int target = (guided_phase_index == 0) ? 6 : 6;
+            if (elapsed >= (unsigned long)target) {
+                guided_phase_index = (guided_phase_index + 1) % 2;
+                PhaseCue cue = (guided_phase_index == 0) ? PhaseCue::Inhale : PhaseCue::Exhale;
+                vibratePhaseCue(cue);
+                guided_phase_start_ms = millis();
+                // End at boundary if guided duration elapsed
+                if (config.guidedBreathingMinutes > 0) {
+                    unsigned long guidedElapsed = (millis() - guided_session_start_ms) / 1000UL;
+                    if (guidedElapsed >= (unsigned long)config.guidedBreathingMinutes * 60UL) {
+                        if (config.silentAfterResonant) enterState(SessionState::SILENT); else enterState(SessionState::IDLE);
+                        return;
+                    }
+                }
+            }
+            if (released_long_press || released_very_long_press) {
+                released_long_press = released_very_long_press = false;
+                Serial.println("Resonant: stopped by long press");
                 enterState(SessionState::IDLE);
                 return;
             }
@@ -661,6 +854,14 @@ void loopSession() {
                 dynamic_inhale_phase = !dynamic_inhale_phase;
                 dynamic_phase_start_ms = now;
                 vibrate(100);
+                // End at boundary if guided duration elapsed
+                if (config.guidedBreathingMinutes > 0) {
+                    unsigned long guidedElapsed = (now - guided_session_start_ms) / 1000UL;
+                    if (guidedElapsed >= (unsigned long)config.guidedBreathingMinutes * 60UL) {
+                        if (config.silentAfterDynamic) enterState(SessionState::SILENT); else enterState(SessionState::IDLE);
+                        return;
+                    }
+                }
             }
             // Re-teach updates on short presses; reuse teaching capture alternating
             if (short_press_detected) {
@@ -696,6 +897,11 @@ void loopSession() {
 
 SessionState getCurrentState() {
     return currentState;
+}
+
+void reloadSessionConfig() {
+    // Safely reload persisted config so runtime durations reflect latest settings
+    config = loadConfig();
 }
 
 int getCurrentSessionRound() {

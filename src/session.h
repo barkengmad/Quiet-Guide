@@ -8,6 +8,9 @@ enum class SessionState {
     RECOVERY,
     SILENT,
     CUSTOM_RUNNING,
+    BOX_RUNNING,
+    FOURSEVENEIGHT_RUNNING,
+    RESONANT_RUNNING,
     DYNAMIC_TEACHING,
     DYNAMIC_GUIDED,
     BOOTING
@@ -30,5 +33,7 @@ SessionState getCurrentState();
 int getCurrentSessionRound();
 int getTotalRounds();
 bool shouldPreventDeepSleep();
+// Reload in-memory session config from storage after web saves
+void reloadSessionConfig();
 
 #endif // SESSION_H 

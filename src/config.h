@@ -29,6 +29,15 @@ const bool DEFAULT_START_CONFIRMATION_HAPTICS = true;
 const int DEFAULT_ABORT_SAVE_THRESHOLD_S = 60;
 const int DEFAULT_BOX_SECONDS = 4; // Range 2..8
 const int DEFAULT_PATTERN_ID = 1; // 1=Wim Hof, 2=Box, 3=4-7-8, 4=Resonant, 5=Custom, 6=Dynamic
+// Global duration for guided (non-Wim Hof) patterns before entering Silent
+const int DEFAULT_GUIDED_BREATHING_MINUTES = 10; // 1..120
+// Per-pattern silent phase inclusion defaults
+const bool DEFAULT_SILENT_AFTER_WIMHOF = true;
+const bool DEFAULT_SILENT_AFTER_BOX = false;
+const bool DEFAULT_SILENT_AFTER_478 = false;
+const bool DEFAULT_SILENT_AFTER_RESONANT = false;
+const bool DEFAULT_SILENT_AFTER_CUSTOM = false;
+const bool DEFAULT_SILENT_AFTER_DYNAMIC = false;
 // Custom timed prompts defaults (0 means skip)
 const int DEFAULT_CUSTOM_INHALE = 0;
 const int DEFAULT_CUSTOM_HOLD_IN = 0;
@@ -70,6 +79,15 @@ struct AppConfig {
     bool includeDynamic;
     // Order of patterns for rotation/haptic count (values are IDs 1..6)
     int patternOrder[6];
+    // Whether to include a silent phase at the end for each pattern
+    bool silentAfterWimHof;
+    bool silentAfterBox;
+    bool silentAfter478;
+    bool silentAfterResonant;
+    bool silentAfterCustom;
+    bool silentAfterDynamic;
+    // Duration (minutes) for guided non-Wim Hof patterns before Silent
+    int guidedBreathingMinutes;
 };
 
 #endif // CONFIG_H 

@@ -12,4 +12,8 @@ void vibrateIPAddress(IPAddress ip);
 void vibrateTypeLong(int count);
 void vibrateValueShort(int count);
 
+// Phase cue abstraction for future haptic variations
+enum class PhaseCue { Inhale, HoldIn, Exhale, HoldOut };
+void vibratePhaseCue(PhaseCue phase);
+
 #endif // VIBRATION_H 

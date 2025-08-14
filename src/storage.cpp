@@ -79,6 +79,14 @@ AppConfig loadConfig() {
         for (int i=0;i<6;i++){ int id=cfg.patternOrder[i]; if (id>=1 && id<=6 && !seen[id]) { out[outIdx++]=id; seen[id]=true; } }
         for (int id=1; id<=6 && outIdx<6; ++id) if (!seen[id]) out[outIdx++]=id;
         for (int i=0;i<6;i++) cfg.patternOrder[i]=out[i];
+        // New per-pattern silent flags: normalize to defaults if invalid
+        if (cfg.silentAfterWimHof != 0 && cfg.silentAfterWimHof != 1) cfg.silentAfterWimHof = DEFAULT_SILENT_AFTER_WIMHOF;
+        if (cfg.silentAfterBox != 0 && cfg.silentAfterBox != 1) cfg.silentAfterBox = DEFAULT_SILENT_AFTER_BOX;
+        if (cfg.silentAfter478 != 0 && cfg.silentAfter478 != 1) cfg.silentAfter478 = DEFAULT_SILENT_AFTER_478;
+        if (cfg.silentAfterResonant != 0 && cfg.silentAfterResonant != 1) cfg.silentAfterResonant = DEFAULT_SILENT_AFTER_RESONANT;
+        if (cfg.silentAfterCustom != 0 && cfg.silentAfterCustom != 1) cfg.silentAfterCustom = DEFAULT_SILENT_AFTER_CUSTOM;
+        if (cfg.silentAfterDynamic != 0 && cfg.silentAfterDynamic != 1) cfg.silentAfterDynamic = DEFAULT_SILENT_AFTER_DYNAMIC;
+        if (cfg.guidedBreathingMinutes < 1 || cfg.guidedBreathingMinutes > 120) cfg.guidedBreathingMinutes = DEFAULT_GUIDED_BREATHING_MINUTES;
         return cfg;
     } else {
         AppConfig defaultConfig = {
@@ -104,7 +112,14 @@ AppConfig loadConfig() {
             DEFAULT_INCLUDE_RESONANT,
             DEFAULT_INCLUDE_CUSTOM,
             DEFAULT_INCLUDE_DYNAMIC,
-            {1,2,3,4,5,6}
+            {1,2,3,4,5,6},
+            DEFAULT_SILENT_AFTER_WIMHOF,
+            DEFAULT_SILENT_AFTER_BOX,
+            DEFAULT_SILENT_AFTER_478,
+            DEFAULT_SILENT_AFTER_RESONANT,
+            DEFAULT_SILENT_AFTER_CUSTOM,
+            DEFAULT_SILENT_AFTER_DYNAMIC,
+            DEFAULT_GUIDED_BREATHING_MINUTES
         };
         saveConfig(defaultConfig);
         return defaultConfig;

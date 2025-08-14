@@ -34,7 +34,7 @@ A minimalist, standalone meditation aid that guides breathing sessions over conf
 ### Core Meditation Functionality
 
 #### **Boot Sequence**
-- ⏳ Automatic Wi-Fi connection (5-second timeout)
+- ⏳ Automatic Wi-Fi connection (10-second timeout)
 - ⏳ NTP time synchronization with fallback
 - ⏳ Visual LED feedback during connection
 - ⏳ Vibration confirmation of device readiness
@@ -90,28 +90,40 @@ Each round consists of three phases:
 - ✅ **Web Interface Integration:** Real-time saving and loading via browser
 
 #### **Session Logging**
-- ⏳ JSON format storage in SPIFFS
-- ⏳ Timestamp-based entries (real or estimated time)
-- ⏳ Complete session data including:
-  - ⏳ Date and start time
-  - ⏳ Individual round durations (deep breathing, hold, recovery)
-  - ⏳ Silent phase duration
-  - ⏳ Total session time
+- ✅ JSON format storage in SPIFFS
+- ✅ Timestamp-based entries (real or estimated time)
+- ✅ Complete session data including:
+  - ✅ Date and start time
+  - ✅ Pattern metadata (pattern_id, pattern_name)
+  - ✅ Pattern settings snapshot (e.g., boxSeconds, guidedMinutes, per‑pattern silentAfter)
+  - ✅ Individual round durations where applicable (Wim Hof)
+  - ✅ Silent phase duration
+  - ✅ Total session time
+  - ✅ UI formatting: non–Wim Hof sessions display as “Rounds: 1” with a compact R1 summary (e.g., `R1: Box=3s Duration=2m00s`)
 
 #### **Example Log Entry**
 ```json
 {
   "date": "2025-05-15",
   "start_time": "10:00:00",
-  "rounds": [
-    {"deep": 32, "hold": 44, "recover": 11},
-    {"deep": 30, "hold": 48, "recover": 10},
-    {"deep": 31, "hold": 51, "recover": 10}
-  ],
-  "silent": 758,
-  "total": 957
+  "pattern_id": 2,
+  "pattern_name": "Box",
+  "settings": {
+    "boxSeconds": 3,
+    "guidedMinutes": 10,
+    "silentAfter": true,
+    "silentPhaseMaxMinutes": 30,
+    "silentReminderEnabled": false,
+    "silentReminderIntervalMinutes": 10
+  },
+  "silent": 30,
+  "total": 150
 }
 ```
+
+UI representation for the above (on `/logs`):
+
+R1: Box=3s Duration=2m00s
 
 ### Power Management
 - ⏳ **Deep Sleep Mode:** Automatic after 3 minutes of inactivity
@@ -232,6 +244,7 @@ The web configuration interface is fully functional. When connected to WiFi, the
 - ✅ **Real-time Status:** Current device state and selected round count
 - ✅ **Training Mode:** Educational descriptions for each meditation phase
 - ✅ **Settings Overview:** All current configuration values displayed
+- ✅ **Breathing Patterns Manager:** Drag to reorder, radio select current, include/exclude per type, and per‑pattern silent toggle
 - ✅ **WiFi Setup Page:** Complete network configuration with:
   - Network scanning and selection
   - Password entry with proper URL decoding
@@ -275,6 +288,14 @@ The web configuration interface is fully functional. When connected to WiFi, the
   - ✅ Human-readable time formatting (e.g., "2m 15s")
 
 **Current Status:** Web interface is fully functional and extensively tested. All features work reliably across different browsers.
+
+### ✅ **Moon Cycle Page**
+Visual tracker for meditations across the current lunar cycle:
+
+- ✅ Circular visualization of ~30 days with yellow dots for completed days
+- ✅ “Today” highlighted with a blue ring
+- ✅ Large center moon icon reflecting lunar phase (new → full → new)
+- ✅ Progress summary and cycle date range
 
 ### 🔄 **Multiple Breathing Modes**
 Implemented and selectable via long-press in IDLE, with haptic confirmation:
@@ -360,10 +381,13 @@ src/
 - **New:** Pattern order persisted and used in haptic rotation; radios persist via web UI
 - **Fix:** currentPatternId POST parsing (off-by-one) and URL-decoding robustness
 - **Change:** Value buzzes only for Wim Hof and Box; others are type-only, including boot/wake and confirmations
+- **New:** Logs show pattern name; non–Wim Hof sessions display “Rounds: 1” with compact `R1: … Duration=..` line
+- **New:** Moon Cycle page with circular progress and center moon
+- **UI:** Dashboard list layout: drag handle at left, then radio, then `[n] Name` for clarity
 
 ---
 
-**Version:** 1.1.0  
+**Version:** 1.1.1  
 **Platform:** ESP32 Arduino Framework  
 **License:** Open Source  
 **Development Status:** Core functionality and web interface complete. Training mode and session management fully implemented and tested. 

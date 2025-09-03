@@ -67,13 +67,13 @@ String getTrainingDescription() {
             return "<h3>🫁 DEEP BREATHING - Round " + String(getCurrentSessionRound()) + " of " + String(getTotalRounds()) + "</h3>"
                    "<p><strong>What's happening:</strong> Take deep, controlled breaths to saturate your blood with oxygen. Breathe in through your nose, out through your mouth.</p>"
                    "<p><strong>Why it matters:</strong> This hyperventilation phase increases oxygen levels and decreases CO2, preparing your body for the breath hold. It triggers physiological changes that improve breath-holding capacity.</p>"
-                   "<p><strong>Next phase:</strong> This will automatically proceed after " + String(config.deepBreathingSeconds) + "s with a long vibration, or when you feel fully oxygenated (tingling, slight dizziness is normal), short press. <strong>When proceeding: breathe out completely and hold your breath</strong> - this starts the breath hold phase immediately.</p>";
+                   "<p><strong>Next phase:</strong> This will automatically proceed after " + String(config.deepBreathingSeconds) + "s, or when you feel fully oxygenated (tingling, slight dizziness is normal), short press. <strong>When proceeding: breathe out completely and hold your breath</strong> — you'll feel a <strong>strong pulse that fades to off over ~3s</strong> marking the start of the breath hold.</p>";
                    
         case SessionState::BREATH_HOLD:
             return "<h3>🛑 BREATH HOLD - Round " + String(getCurrentSessionRound()) + " of " + String(getTotalRounds()) + "</h3>"
                    "<p><strong>What's happening:</strong> You are now holding your breath after exhaling completely. Stay relaxed, don't force it. Your body will signal when it's time to breathe.</p>"
                    "<p><strong>Why it matters:</strong> This activates your mammalian dive reflex, trains CO2 tolerance, and builds mental resilience. It's where the real benefits of the Wim Hof method occur.</p>"
-                   "<p><strong>Next phase:</strong> Trust your body - it will tell you when it's time to breathe. When you feel the urge, try to hold for a few seconds more, then take a deep breath in, hold it for 10-15 seconds, and short press to start the recovery phase. Everyone is different, and with practice you'll be able to hold for longer.</p>";
+                   "<p><strong>Next phase:</strong> Trust your body — it will tell you when it's time to breathe. When you feel the urge, try to hold a few seconds more, then take a deep breath in and hold it for 10–15 seconds. When transitioning to recovery (button or timeout), you'll feel a <strong>fade‑in to strong pulse over ~3s</strong> to guide that inhale.</p>";
                    
         case SessionState::RECOVERY: {
             int currentRound = getCurrentSessionRound();
@@ -508,8 +508,7 @@ void handleClient(WiFiClient& client) {
         content += "<p><strong>Technique:</strong> Breathe deeply and rhythmically - in through nose, out through mouth</p>";
         content += "<p><strong>Duration:</strong> Default " + String(loadConfig().deepBreathingSeconds) + " seconds (configurable)</p>";
         content += "<p><strong>Feel:</strong> Tingling, lightheadedness, or slight dizziness is normal</p>";
-        content += "<p><strong>Transition:</strong> Long vibration after timeout, or short press when ready</p>";
-        content += "<p><strong>Preparation:</strong> When advancing - breathe out completely and hold</p>";
+        content += "<p><strong>Transition cue:</strong> When advancing to breath hold, you'll feel a <strong>strong pulse that fades to off over ~3s</strong> — breathe out completely and hold.</p>";
         content += "</div>";
         
         content += "<div style='background:#f8f9fa;padding:15px;margin:15px 0;border-radius:5px;border-left:4px solid #dc3545;'>";
@@ -518,7 +517,7 @@ void handleClient(WiFiClient& client) {
         content += "<p><strong>Mindset:</strong> Stay relaxed, don't force it, trust your body</p>";
         content += "<p><strong>Duration:</strong> As long as comfortable - everyone is different</p>";
         content += "<p><strong>Progression:</strong> When you feel the urge to breathe, try holding a few seconds more</p>";
-        content += "<p><strong>Transition:</strong> Take deep breath in, hold 10-15 seconds, then short press</p>";
+        content += "<p><strong>Transition cue:</strong> When it's time to inhale for recovery, you'll feel a <strong>fade‑in to strong pulse over ~3s</strong>; inhale deeply, hold 10–15 seconds, then short press.</p>";
         content += "</div>";
         
         content += "<div style='background:#f8f9fa;padding:15px;margin:15px 0;border-radius:5px;border-left:4px solid #ffc107;'>";

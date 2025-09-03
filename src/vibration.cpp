@@ -5,6 +5,11 @@
 #include <Arduino.h>
 
 unsigned long vibration_stop_time = 0;
+static bool fade_active = false;
+static unsigned long fade_start_time = 0;
+static int fade_duration_ms = 0;
+static bool fade_in = false;
+static int fade_post_hold_ms = 0;
 
 void setupVibration() {
     ledcSetup(VIBRATION_PWM_CHANNEL, VIBRATION_PWM_FREQ, VIBRATION_PWM_RESOLUTION);
@@ -17,7 +22,33 @@ void vibrate(int duration_ms) {
 }
 
 void loopVibration() {
-    if (vibration_stop_time > 0 && millis() >= vibration_stop_time) {
+    unsigned long now = millis();
+    if (fade_active) {
+        unsigned long elapsed = now - fade_start_time;
+        if (elapsed >= (unsigned long)fade_duration_ms) {
+            // End of fade
+            if (fade_in) {
+                // After fade-in, optionally hold full strength briefly
+                if (fade_post_hold_ms > 0) {
+                    ledcWrite(VIBRATION_PWM_CHANNEL, 200);
+                    vibration_stop_time = now + fade_post_hold_ms;
+                } else {
+                    ledcWrite(VIBRATION_PWM_CHANNEL, 200);
+                    vibration_stop_time = now; // allow immediate stop below
+                }
+            } else {
+                ledcWrite(VIBRATION_PWM_CHANNEL, 0);
+            }
+            fade_active = false;
+        } else {
+            // Linear ramp 0..200 (or reverse)
+            int level = (int)((elapsed * 200L) / fade_duration_ms);
+            if (!fade_in) level = 200 - level;
+            if (level < 0) level = 0; if (level > 200) level = 200;
+            ledcWrite(VIBRATION_PWM_CHANNEL, level);
+        }
+    }
+    if (vibration_stop_time > 0 && now >= vibration_stop_time) {
         ledcWrite(VIBRATION_PWM_CHANNEL, 0); // Stop vibration
         vibration_stop_time = 0;
     }
@@ -54,6 +85,22 @@ void vibratePhaseCue(PhaseCue phase) {
     // For now, all phases use a short 100ms cue. This can be customized later.
     (void)phase; // suppress unused warning
     vibrate(100);
+}
+
+void vibrateFadeOut(int duration_ms) {
+    fade_active = true;
+    fade_in = false;
+    fade_duration_ms = (duration_ms < 50) ? 50 : duration_ms;
+    fade_post_hold_ms = 0;
+    fade_start_time = millis();
+}
+
+void vibrateFadeIn(int duration_ms, int post_hold_ms) {
+    fade_active = true;
+    fade_in = true;
+    fade_duration_ms = (duration_ms < 50) ? 50 : duration_ms;
+    fade_post_hold_ms = post_hold_ms;
+    fade_start_time = millis();
 }
 
 void vibrateIPAddress(IPAddress ip) {

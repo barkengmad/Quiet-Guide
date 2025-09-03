@@ -11,6 +11,9 @@ void vibrateIPAddress(IPAddress ip);
 // New helpers: type and value announcements
 void vibrateTypeLong(int count);
 void vibrateValueShort(int count);
+// Non-blocking fades for phase boundaries
+void vibrateFadeOut(int duration_ms);
+void vibrateFadeIn(int duration_ms, int post_hold_ms = 0);
 
 // Phase cue abstraction for future haptic variations
 enum class PhaseCue { Inhale, HoldIn, Exhale, HoldOut };

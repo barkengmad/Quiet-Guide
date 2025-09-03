@@ -384,6 +384,7 @@ src/
 - **New:** Logs show pattern name; non–Wim Hof sessions display “Rounds: 1” with compact `R1: … Duration=..` line
 - **New:** Moon Cycle page with circular progress and center moon
 - **UI:** Dashboard list layout: drag handle at left, then radio, then `[n] Name` for clarity
+-. **Haptics (Wim Hof):** Distinct transition cues — deep→hold gives a strong pulse that fades to off over ~3s; hold→recovery gives a fade‑in to strong over ~3s (with brief hold). This clarifies where you are in the round.
 
 ---
 

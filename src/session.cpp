@@ -217,11 +217,13 @@ void enterState(SessionState newState) {
             break;
         case SessionState::BREATH_HOLD:
             Serial.println("State: BREATH_HOLD");
-            vibrate(250);
+            // Wim Hof transition: deep → hold-out boundary cue
+            vibrateFadeOut(3000);
             break;
         case SessionState::RECOVERY:
             Serial.println("State: RECOVERY");
-            vibrate(250);
+            // Wim Hof transition: hold → recovery (inhale) boundary cue
+            vibrateFadeIn(3000, 300);
             break;
         case SessionState::SILENT:
             Serial.println("State: SILENT");

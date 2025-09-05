@@ -44,6 +44,8 @@ unsigned long last_round_press_time = 0;
 bool round_selection_pending = false;
 unsigned long session_start_time_ms = 0;
 static bool boot_haptics_done = false;
+static bool skip_idle_preview = false;     // suppress one-time IDLE preview after silent
+static bool pending_silent_exit = false;   // wait to finish swell before exit
 
 // Custom mode runtime
 struct PhaseDef { const char* name; int seconds; };
@@ -200,10 +202,16 @@ void enterState(SessionState newState) {
             Serial.print("DEBUG: Currently selected value: ");
             Serial.println(getPatternValueForPulse());
             // Only pulse selection preview for Wim Hof (rounds) and Box (seconds)
-            if (config.currentPatternId == 1 || config.currentPatternId == 2) {
-                startPulsing(getPatternValueForPulse());
-            } else {
+            if (skip_idle_preview) {
+                // Suppress preview once after silent end
                 pulse_count_remaining = 0;
+                skip_idle_preview = false;
+            } else {
+                if (config.currentPatternId == 1 || config.currentPatternId == 2) {
+                    startPulsing(getPatternValueForPulse());
+                } else {
+                    pulse_count_remaining = 0;
+                }
             }
             break;
         case SessionState::DEEP_BREATHING:
@@ -227,7 +235,9 @@ void enterState(SessionState newState) {
             break;
         case SessionState::SILENT:
             Serial.println("State: SILENT");
-            vibrate(750); // Longer pulse to indicate start of silent phase
+            // Start-of-silent swell: 25% -> 100% -> 25% over 5 seconds
+            vibrateSwell(2500, 2500);
+            pending_silent_exit = false;
             break;
         case SessionState::CUSTOM_RUNNING:
             Serial.println("State: CUSTOM_RUNNING");
@@ -635,24 +645,33 @@ void loopSession() {
             
         case SessionState::SILENT:
             if (short_press_detected) {
-                // Silent phase is complete, save session and go to idle
-                saveCurrentSession();
-                enterState(SessionState::IDLE);
+                // Trigger end-of-silent swell, then mark to exit when finished
+                vibrateSwell(2500, 2500);
+                pending_silent_exit = true;
                 short_press_detected = false;
             }
             // Auto-end silent phase after max duration
             if (millis() - state_enter_time > (unsigned long)config.silentPhaseMaxMinutes * 60 * 1000) {
                 Serial.println("Silent phase max duration reached. Ending session.");
-                saveCurrentSession();
-                enterState(SessionState::IDLE);
+                vibrateSwell(2500, 2500);
+                pending_silent_exit = true;
             }
             // Silent reminder pulse
             if (config.silentReminderEnabled) {
                 static unsigned long last_reminder_time = 0;
                 if (millis() - last_reminder_time > (unsigned long)config.silentReminderIntervalMinutes * 60 * 1000) {
-                    vibrate(750);
+                    if (!isVibrationBusy()) {
+                        vibrate(750);
+                    }
                     last_reminder_time = millis();
                 }
+            }
+            // If swell finished and we were asked to exit, save and go to IDLE
+            if (pending_silent_exit && !isVibrationBusy()) {
+                saveCurrentSession();
+                skip_idle_preview = true; // don't preview selection immediately on return to idle
+                enterState(SessionState::IDLE);
+                return;
             }
             // Global long press abort for active sessions
             if (released_long_press || released_very_long_press) {

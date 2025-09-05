@@ -14,6 +14,10 @@ void vibrateValueShort(int count);
 // Non-blocking fades for phase boundaries
 void vibrateFadeOut(int duration_ms);
 void vibrateFadeIn(int duration_ms, int post_hold_ms = 0);
+// Non-blocking swell: 25% -> 100% -> 25%
+void vibrateSwell(int up_ms, int down_ms);
+// Query whether any vibration effect is currently active
+bool isVibrationBusy();
 
 // Phase cue abstraction for future haptic variations
 enum class PhaseCue { Inhale, HoldIn, Exhale, HoldOut };

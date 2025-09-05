@@ -10,6 +10,11 @@ static unsigned long fade_start_time = 0;
 static int fade_duration_ms = 0;
 static bool fade_in = false;
 static int fade_post_hold_ms = 0;
+// Swell (25% -> 100% -> 25%) state
+static bool swell_active = false;
+static unsigned long swell_start_time = 0;
+static int swell_up_ms = 0;
+static int swell_down_ms = 0;
 
 void setupVibration() {
     ledcSetup(VIBRATION_PWM_CHANNEL, VIBRATION_PWM_FREQ, VIBRATION_PWM_RESOLUTION);
@@ -19,6 +24,10 @@ void setupVibration() {
 void vibrate(int duration_ms) {
     ledcWrite(VIBRATION_PWM_CHANNEL, 200); // 78% duty cycle for more strength
     vibration_stop_time = millis() + duration_ms;
+}
+
+bool isVibrationBusy() {
+    return vibration_stop_time > 0 || fade_active || swell_active;
 }
 
 void loopVibration() {
@@ -37,13 +46,47 @@ void loopVibration() {
                     vibration_stop_time = now; // allow immediate stop below
                 }
             } else {
-                ledcWrite(VIBRATION_PWM_CHANNEL, 0);
+                // For fade-out, finish ramp at perceivable threshold (25%), then stop
+                ledcWrite(VIBRATION_PWM_CHANNEL, 50);
+                vibration_stop_time = now; // stop shortly after
             }
             fade_active = false;
         } else {
-            // Linear ramp 0..200 (or reverse)
-            int level = (int)((elapsed * 200L) / fade_duration_ms);
-            if (!fade_in) level = 200 - level;
+            // Linear ramp within 25%..100% (50..200)
+            const int minLevel = 50;
+            const int maxLevel = 200;
+            const int range = maxLevel - minLevel; // 150
+            int level = (int)((elapsed * (long)range) / fade_duration_ms);
+            if (!fade_in) level = range - level;
+            level += minLevel;
+            if (level < 0) level = 0; if (level > 200) level = 200;
+            ledcWrite(VIBRATION_PWM_CHANNEL, level);
+        }
+    }
+    // Swell handling (25% -> 100% -> 25%)
+    if (swell_active) {
+        unsigned long elapsed = now - swell_start_time;
+        unsigned long total = (unsigned long)swell_up_ms + (unsigned long)swell_down_ms;
+        if (elapsed >= total) {
+            // End at threshold then stop
+            ledcWrite(VIBRATION_PWM_CHANNEL, 50);
+            swell_active = false;
+            vibration_stop_time = now; // allow stop logic below to clear
+        } else if (elapsed < (unsigned long)swell_up_ms) {
+            // Up ramp
+            const int minLevel = 50;
+            const int maxLevel = 200;
+            const int range = maxLevel - minLevel;
+            int level = minLevel + (int)((elapsed * (long)range) / swell_up_ms);
+            if (level < 0) level = 0; if (level > 200) level = 200;
+            ledcWrite(VIBRATION_PWM_CHANNEL, level);
+        } else {
+            // Down ramp
+            unsigned long downElapsed = elapsed - (unsigned long)swell_up_ms;
+            const int minLevel = 50;
+            const int maxLevel = 200;
+            const int range = maxLevel - minLevel;
+            int level = maxLevel - (int)((downElapsed * (long)range) / swell_down_ms);
             if (level < 0) level = 0; if (level > 200) level = 200;
             ledcWrite(VIBRATION_PWM_CHANNEL, level);
         }
@@ -101,6 +144,17 @@ void vibrateFadeIn(int duration_ms, int post_hold_ms) {
     fade_duration_ms = (duration_ms < 50) ? 50 : duration_ms;
     fade_post_hold_ms = post_hold_ms;
     fade_start_time = millis();
+}
+
+void vibrateSwell(int up_ms, int down_ms) {
+    if (up_ms < 50) up_ms = 50;
+    if (down_ms < 50) down_ms = 50;
+    swell_active = true;
+    swell_up_ms = up_ms;
+    swell_down_ms = down_ms;
+    swell_start_time = millis();
+    // Initialize at 25%
+    ledcWrite(VIBRATION_PWM_CHANNEL, 50);
 }
 
 void vibrateIPAddress(IPAddress ip) {

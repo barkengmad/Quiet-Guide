@@ -23,8 +23,8 @@ JsonDocument session_log_doc;
 JsonArray rounds_log;
 
 // Button handling - moved into session module
-const long LONG_PRESS_MIN = 2000;      // 2s ≤ long < 4s
-const long VERY_LONG_PRESS_MIN = 4000; // ≥4s
+const long LONG_PRESS_MIN = 1500;      // 1.5s ≤ long < 3s
+const long VERY_LONG_PRESS_MIN = 3000; // ≥3s
 const long DEBOUNCE_DELAY = 50;
 const long ROUND_SELECT_DELAY = 1000; // 1 second delay before pulsing
 int last_stable_state = HIGH;
@@ -46,6 +46,10 @@ unsigned long session_start_time_ms = 0;
 static bool boot_haptics_done = false;
 static bool skip_idle_preview = false;     // suppress one-time IDLE preview after silent
 static bool pending_silent_exit = false;   // wait to finish swell before exit
+static bool pending_recovery_transition = false; // wait to finish fade-out before transitioning from recovery
+static SessionState recovery_next_state = SessionState::IDLE; // target state after recovery fade-out
+static unsigned long recovery_gap_start_time = 0; // timestamp when fade-out finished, to add gap before next haptic
+static bool recovery_doing_prehold = false; // true during the 300ms hold before fade-out
 
 // Custom mode runtime
 struct PhaseDef { const char* name; int seconds; };
@@ -156,7 +160,7 @@ void handleButtonInSession() {
             long_zone_buzzed = true;
         }
         if (!very_long_zone_buzzed && held >= VERY_LONG_PRESS_MIN) {
-            vibrate(200); // short cue
+            vibrate(450); // longer cue (2.25x first buzz)
             very_long_zone_buzzed = true;
         }
     }
@@ -601,26 +605,55 @@ void loopSession() {
             break;
 
         case SessionState::RECOVERY:
-             if (short_press_detected) {
+             if (short_press_detected && !pending_recovery_transition) {
                 unsigned long duration = (millis() - state_enter_time) / 1000;
                 rounds_log[current_session_round-1]["recover"] = duration;
-                // Transition to next round or silent phase
-                 if (current_session_round < config.currentRound) {
-                    enterState(SessionState::DEEP_BREATHING);
+                // Start with 300ms hold at full strength, then fade-out (mirror of fade-in)
+                vibrate(300); // Hold at 100% for 300ms
+                if (current_session_round < config.currentRound) {
+                    recovery_next_state = SessionState::DEEP_BREATHING;
                 } else {
-                    if (config.silentAfterWimHof) enterState(SessionState::SILENT); else enterState(SessionState::IDLE);
+                    if (config.silentAfterWimHof) recovery_next_state = SessionState::SILENT; 
+                    else recovery_next_state = SessionState::IDLE;
                 }
+                pending_recovery_transition = true;
+                recovery_doing_prehold = true;
                 short_press_detected = false;
             }
             // Timeout transition
-            if (millis() - state_enter_time > (unsigned long)config.recoverySeconds * 1000) {
+            if (!pending_recovery_transition && millis() - state_enter_time > (unsigned long)config.recoverySeconds * 1000) {
                 unsigned long duration = (millis() - state_enter_time) / 1000;
                 rounds_log[current_session_round-1]["recover"] = duration;
-                vibrate(750);
-                 if (current_session_round < config.currentRound) {
-                    enterState(SessionState::DEEP_BREATHING);
+                // Start with 300ms hold at full strength, then fade-out (mirror of fade-in)
+                vibrate(300); // Hold at 100% for 300ms
+                if (current_session_round < config.currentRound) {
+                    recovery_next_state = SessionState::DEEP_BREATHING;
                 } else {
-                    if (config.silentAfterWimHof) enterState(SessionState::SILENT); else enterState(SessionState::IDLE);
+                    if (config.silentAfterWimHof) recovery_next_state = SessionState::SILENT; 
+                    else recovery_next_state = SessionState::IDLE;
+                }
+                pending_recovery_transition = true;
+                recovery_doing_prehold = true;
+            }
+            // Handle the pre-hold -> fade-out -> gap -> transition sequence
+            if (pending_recovery_transition) {
+                if (recovery_doing_prehold && !isVibrationBusy()) {
+                    // Pre-hold finished, now start the 3-second fade-out
+                    vibrateFadeOut(3000); // 3 second ramp down (25% to off)
+                    recovery_doing_prehold = false;
+                }
+                if (!recovery_doing_prehold && !isVibrationBusy()) {
+                    // Fade-out finished, start 2 second gap timer
+                    if (recovery_gap_start_time == 0) {
+                        recovery_gap_start_time = millis();
+                    }
+                    // After 2 second gap, transition to next state
+                    if (millis() - recovery_gap_start_time >= 2000) {
+                        pending_recovery_transition = false;
+                        recovery_gap_start_time = 0;
+                        enterState(recovery_next_state);
+                        return;
+                    }
                 }
             }
             // Global long press abort for active sessions
@@ -945,4 +978,8 @@ void finishBooting() {
     if (currentState == SessionState::BOOTING) {
         enterState(SessionState::IDLE);
     }
+}
+
+void resetIdleTimer() {
+    last_interaction_time = millis();
 } 

@@ -61,7 +61,8 @@ String getTrainingDescription() {
             return "<h3>🏠 IDLE - Ready to Begin</h3>"
                    "<p><strong>What's happening:</strong> The device is ready for meditation. Use short button presses to select your desired number of rounds (1-" + String(config.maxRounds) + ").</p>"
                    "<p><strong>Why it matters:</strong> Choosing the right number of rounds helps build your breath-holding capacity gradually. Start with fewer rounds and increase as you improve.</p>"
-                   "<p><strong>Next phase:</strong> Long press the button to start your breathing session with the selected rounds.</p>";
+                   "<p><strong>Button feedback:</strong> Hold button for 1.5s (short buzz) to change pattern, or 3s (longer buzz) to start session.</p>"
+                   "<p><strong>Next phase:</strong> Long press the button (3+ seconds) to start your breathing session with the selected rounds.</p>";
                    
         case SessionState::DEEP_BREATHING:
             return "<h3>🫁 DEEP BREATHING - Round " + String(getCurrentSessionRound()) + " of " + String(getTotalRounds()) + "</h3>"
@@ -73,7 +74,7 @@ String getTrainingDescription() {
             return "<h3>🛑 BREATH HOLD - Round " + String(getCurrentSessionRound()) + " of " + String(getTotalRounds()) + "</h3>"
                    "<p><strong>What's happening:</strong> You are now holding your breath after exhaling completely. Stay relaxed, don't force it. Your body will signal when it's time to breathe.</p>"
                    "<p><strong>Why it matters:</strong> This activates your mammalian dive reflex, trains CO2 tolerance, and builds mental resilience. It's where the real benefits of the Wim Hof method occur.</p>"
-                   "<p><strong>Next phase:</strong> Trust your body — it will tell you when it's time to breathe. When you feel the urge, try to hold a few seconds more, then take a deep breath in and hold it for 10–15 seconds. When transitioning to recovery (button or timeout), you'll feel a <strong>fade‑in to strong pulse over ~3s</strong> to guide that inhale.</p>";
+                   "<p><strong>Next phase:</strong> Trust your body — it will tell you when it's time to breathe. When you feel the urge, try to hold a few seconds more, then take a deep breath in and hold it for 10–15 seconds. When transitioning to recovery (button or timeout), you'll feel a <strong>3s fade-in (25%→100%) + 300ms hold at peak</strong> to guide that inhale.</p>";
                    
         case SessionState::RECOVERY: {
             int currentRound = getCurrentSessionRound();
@@ -81,9 +82,9 @@ String getTrainingDescription() {
             String nextPhaseInfo;
             
             if (currentRound < totalRounds) {
-                nextPhaseInfo = "This will automatically proceed after " + String(config.recoverySeconds) + "s with a long vibration, or short press when ready. <strong>Next: Round " + String(currentRound + 1) + " will start with " + String(currentRound + 1) + " short buzzes</strong> to indicate the round number.";
+                nextPhaseInfo = "This will automatically proceed after " + String(config.recoverySeconds) + "s, or short press when ready. <strong>Transition: You'll feel a 300ms hold + 3s fade-out, then a 2s pause, followed by " + String(currentRound + 1) + " short buzzes</strong> to indicate round " + String(currentRound + 1) + ".";
             } else {
-                nextPhaseInfo = "This will automatically proceed after " + String(config.recoverySeconds) + "s with a long vibration, or short press when ready. <strong>Next: Silent meditation will start with one long buzz</strong> to indicate the final phase.";
+                nextPhaseInfo = "This will automatically proceed after " + String(config.recoverySeconds) + "s, or short press when ready. <strong>Transition: You'll feel a 300ms hold + 3s fade-out, then a 2s pause, followed by a 5s swell (up/down)</strong> marking the start of silent meditation.";
             }
             
             return "<h3>💨 RECOVERY - Round " + String(currentRound) + " of " + String(totalRounds) + "</h3>"
@@ -96,7 +97,7 @@ String getTrainingDescription() {
             return "<h3>🧘 SILENT MEDITATION - Final Phase</h3>"
                    "<p><strong>What's happening:</strong> Enjoy the heightened state of awareness after completing " + String(getTotalRounds()) + " breathing rounds. Meditate in silence, observing your inner experience.</p>"
                    "<p><strong>Why it matters:</strong> This phase allows you to experience the full benefits of the practice - increased focus, calmness, and bodily awareness that follows the breathing technique.</p>"
-                   "<p><strong>Next phase:</strong> Stay as long as feels right (maximum " + String(config.silentPhaseMaxMinutes) + " minutes), or short press when ready to end your session and return to idle.</p>";
+                   "<p><strong>Ending the session:</strong> Short press anytime or wait for auto-end (max " + String(config.silentPhaseMaxMinutes) + " min). You'll feel a <strong>5s swell (ramp up & down)</strong> confirming the session end, then return to idle.</p>";
                    
         case SessionState::BOOTING:
             return "<h3>⚡ STARTING UP - System Initialization</h3>"
@@ -155,6 +156,9 @@ String generateHTML(String title, String content) {
     html += "body{font-family:Arial,sans-serif;margin:20px;background:#f5f5f5}";
     html += ".container{max-width:600px;margin:0 auto;background:white;padding:20px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}";
     html += "h1{color:#333;text-align:center;margin-bottom:20px}";
+    html += ".moon-mobile{display:block}";
+    html += ".moon-desktop{display:none}";
+    html += "@media (min-width:1024px){.moon-mobile{display:none}.moon-desktop{display:block}}";
     html += ".nav{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-bottom:20px}";
     html += ".nav a{padding:8px 15px;background:#007bff;color:white;text-decoration:none;border-radius:5px}";
     html += ".nav a:hover{background:#0056b3}";
@@ -253,6 +257,9 @@ String generateHTML(String title, String content) {
 
 void handleClient(WiFiClient& client) {
     String request = client.readStringUntil('\r');
+    
+    // Reset idle timer on any web interaction
+    resetIdleTimer();
     
     // Don't flush for POST requests - we need the body data!
     bool isPostRequest = request.indexOf("POST") >= 0;
@@ -443,8 +450,13 @@ void handleClient(WiFiClient& client) {
             content += "</circle>";
             content += "</g>";
         }
-        // Center moon emoji (large, fills center)
-        content += "<text x='" + String(cx) + "' y='" + String(cy - 18) + "' text-anchor='middle' dominant-baseline='middle' font-family='Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, Arial' font-size='144'>";
+        // Center moon emoji - two versions for mobile and desktop alignment
+        // Mobile version (display on screens < 768px)
+        content += "<text class='moon-mobile' x='" + String(cx) + "' y='" + String(cy + 10) + "' text-anchor='middle' dominant-baseline='middle' font-family='Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, Arial' font-size='144'>";
+        content += moonIcon;
+        content += "</text>";
+        // Desktop version (display on screens >= 768px)
+        content += "<text class='moon-desktop' x='" + String(cx) + "' y='" + String(cy - 18) + "' text-anchor='middle' dominant-baseline='middle' font-family='Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, Arial' font-size='144'>";
         content += moonIcon;
         content += "</text>";
         content += "</svg>";
@@ -500,7 +512,8 @@ void handleClient(WiFiClient& client) {
         content += "<h4>🏠 IDLE - Preparation</h4>";
         content += "<p><strong>Action:</strong> Select your desired number of rounds (1-" + String(loadConfig().maxRounds) + ") with short button presses</p>";
         content += "<p><strong>Device:</strong> Vibrates equal to selected rounds after 1-second delay</p>";
-        content += "<p><strong>Start:</strong> Long press (2+ seconds) to begin session</p>";
+        content += "<p><strong>Button hold feedback:</strong> At 1.5s you'll feel a 200ms buzz (pattern change zone), at 3s a 450ms buzz (session start zone)</p>";
+        content += "<p><strong>Start:</strong> Long press (3+ seconds) to begin session</p>";
         content += "</div>";
         
         content += "<div style='background:#f8f9fa;padding:15px;margin:15px 0;border-radius:5px;border-left:4px solid #28a745;'>";
@@ -517,7 +530,7 @@ void handleClient(WiFiClient& client) {
         content += "<p><strong>Mindset:</strong> Stay relaxed, don't force it, trust your body</p>";
         content += "<p><strong>Duration:</strong> As long as comfortable - everyone is different</p>";
         content += "<p><strong>Progression:</strong> When you feel the urge to breathe, try holding a few seconds more</p>";
-        content += "<p><strong>Transition cue:</strong> When it's time to inhale for recovery, you'll feel a <strong>fade‑in to strong pulse over ~3s</strong>; inhale deeply, hold 10–15 seconds, then short press.</p>";
+        content += "<p><strong>Transition cue:</strong> When it's time to inhale for recovery, you'll feel a <strong>3s fade-in (25%→100%) + 300ms hold at peak</strong>; inhale deeply during the ramp-up, hold 10–15 seconds at peak, then short press.</p>";
         content += "</div>";
         
         content += "<div style='background:#f8f9fa;padding:15px;margin:15px 0;border-radius:5px;border-left:4px solid #ffc107;'>";
@@ -525,8 +538,9 @@ void handleClient(WiFiClient& client) {
         content += "<p><strong>Breath:</strong> Hold deep recovery breath for 10-15 seconds</p>";
         content += "<p><strong>Purpose:</strong> Integrates physiological changes from breath hold</p>";
         content += "<p><strong>Duration:</strong> Default " + String(loadConfig().recoverySeconds) + " seconds (configurable)</p>";
-        content += "<p><strong>Next Round:</strong> Device buzzes equal to next round number</p>";
-        content += "<p><strong>Final Round:</strong> Device gives one long buzz for silent phase</p>";
+        content += "<p><strong>Transition haptics:</strong> 300ms hold at 100% + 3s fade-out (100%→25%) + 2s silent pause</p>";
+        content += "<p><strong>Next Round:</strong> After the pause, device pulses equal to the next round number</p>";
+        content += "<p><strong>Final Round:</strong> After the pause, device performs a 5s swell (ramp up & down) for silent phase</p>";
         content += "</div>";
         
         content += "<div style='background:#f8f9fa;padding:15px;margin:15px 0;border-radius:5px;border-left:4px solid #6f42c1;'>";
@@ -534,7 +548,7 @@ void handleClient(WiFiClient& client) {
         content += "<p><strong>Experience:</strong> Heightened awareness and calm after breathing rounds</p>";
         content += "<p><strong>Practice:</strong> Observe inner sensations, thoughts, and feelings</p>";
         content += "<p><strong>Duration:</strong> As long as feels right (max " + String(loadConfig().silentPhaseMaxMinutes) + " minutes)</p>";
-        content += "<p><strong>End:</strong> Short press when ready to complete session</p>";
+        content += "<p><strong>Ending:</strong> Short press anytime (or auto-end at max time). You'll feel a <strong>5s swell (ramp up & down)</strong> confirming session end</p>";
         content += "</div>";
         
         content += "<h3>⚠️ Safety Guidelines</h3>";
@@ -1063,7 +1077,9 @@ void handleClient(WiFiClient& client) {
             deserializeJson(doc, logs);
             JsonArray logsArray = doc.as<JsonArray>();
             
-            for (size_t sessionIndex = 0; sessionIndex < logsArray.size(); sessionIndex++) {
+            // Display logs in reverse chronological order (newest first)
+            for (int i = logsArray.size() - 1; i >= 0; i--) {
+                size_t sessionIndex = i;
                 JsonVariant log = logsArray[sessionIndex];
                 content += "<div class='logs'>";
                 content += "<strong>Date:</strong> " + String(log["date"].as<const char*>()) + " ";

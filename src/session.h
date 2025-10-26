@@ -35,5 +35,7 @@ int getTotalRounds();
 bool shouldPreventDeepSleep();
 // Reload in-memory session config from storage after web saves
 void reloadSessionConfig();
+// Reset the idle timeout timer (called on button press or web interaction)
+void resetIdleTimer();
 
 #endif // SESSION_H 

@@ -17,15 +17,22 @@ struct StoredVibrateFlag {
     bool shouldVibrate;
 };
 
+struct StoredWiFiNetworks {
+    int magicNumber;
+    WiFiNetworkList networkList;
+};
+
 const int CONFIG_ADDRESS = 0;
 const int CONFIG_MAGIC_NUMBER = 0x1A2B3C4D;
 const int WIFI_ADDRESS = sizeof(StoredConfig);
 const int WIFI_MAGIC_NUMBER = 0x5E6F7A8B;
 const int VIBRATE_FLAG_ADDRESS = sizeof(StoredConfig) + sizeof(StoredWiFi);
 const int VIBRATE_FLAG_MAGIC = 0x9F8E7D6C;
+const int WIFI_NETWORKS_ADDRESS = sizeof(StoredConfig) + sizeof(StoredWiFi) + sizeof(StoredVibrateFlag);
+const int WIFI_NETWORKS_MAGIC = 0xA1B2C3D4;
 
 void setupStorage() {
-    EEPROM.begin(sizeof(StoredConfig) + sizeof(StoredWiFi) + sizeof(StoredVibrateFlag));
+    EEPROM.begin(sizeof(StoredConfig) + sizeof(StoredWiFi) + sizeof(StoredVibrateFlag) + sizeof(StoredWiFiNetworks));
     if (!SPIFFS.begin(true)) {
         Serial.println("An Error has occurred while mounting SPIFFS");
         return;
@@ -326,4 +333,64 @@ bool getVibrateIPFlag() {
         Serial.println("No vibrate IP flag found");
         return false;
     }
+}
+
+// Multi-network WiFi storage functions
+void saveWiFiNetworks(const WiFiNetworkList& networks) {
+    StoredWiFiNetworks stored;
+    stored.magicNumber = WIFI_NETWORKS_MAGIC;
+    stored.networkList = networks;
+    
+    Serial.println("=== SAVING WIFI NETWORKS ===");
+    Serial.print("Network count: ");
+    Serial.println(networks.count);
+    for (int i = 0; i < networks.count; i++) {
+        Serial.print("Network ");
+        Serial.print(i);
+        Serial.print(" - SSID: '");
+        Serial.print(networks.networks[i].ssid);
+        Serial.print("', Priority: ");
+        Serial.println(networks.networks[i].priority);
+    }
+    
+    EEPROM.put(WIFI_NETWORKS_ADDRESS, stored);
+    EEPROM.commit();
+    Serial.println("WiFi networks saved to EEPROM");
+    Serial.println("=== END SAVE ===");
+}
+
+WiFiNetworkList loadWiFiNetworks() {
+    StoredWiFiNetworks stored;
+    
+    Serial.println("=== LOADING WIFI NETWORKS ===");
+    EEPROM.get(WIFI_NETWORKS_ADDRESS, stored);
+    
+    if (stored.magicNumber == WIFI_NETWORKS_MAGIC) {
+        Serial.println("WiFi networks loaded from EEPROM");
+        Serial.print("Network count: ");
+        Serial.println(stored.networkList.count);
+        for (int i = 0; i < stored.networkList.count; i++) {
+            Serial.print("Network ");
+            Serial.print(i);
+            Serial.print(" - SSID: '");
+            Serial.print(stored.networkList.networks[i].ssid);
+            Serial.print("', Priority: ");
+            Serial.println(stored.networkList.networks[i].priority);
+        }
+        Serial.println("=== END LOAD ===");
+        return stored.networkList;
+    } else {
+        Serial.println("No valid WiFi networks found, returning empty list");
+        Serial.println("=== END LOAD ===");
+        WiFiNetworkList emptyList;
+        emptyList.count = 0;
+        return emptyList;
+    }
+}
+
+void clearWiFiNetworks() {
+    WiFiNetworkList emptyList;
+    emptyList.count = 0;
+    saveWiFiNetworks(emptyList);
+    Serial.println("WiFi networks cleared");
 } 

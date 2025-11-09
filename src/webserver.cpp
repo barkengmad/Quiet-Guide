@@ -658,34 +658,55 @@ void handleClient(WiFiClient& client) {
             content += "</div>";
         }
         
-        // Show stored WiFi credentials near the top, after status
+        // Show stored WiFi networks (multi-network system)
         {
-            WiFiCredentials wifiCreds = loadWiFiCredentials();
-            content += "<h3>Stored WiFi Credentials</h3>";
-            if (wifiCreds.isConfigured && strlen(wifiCreds.ssid) > 0) {
-                content += "<div style='background:#e2e3e5;color:#383d41;padding:10px;margin:10px 0;border-radius:5px;'>";
-                content += "<strong>SSID:</strong> " + String(wifiCreds.ssid) + "<br>";
-                String maskedPwd = "";
-                for (size_t i = 0; i < strlen(wifiCreds.password); ++i) maskedPwd += '*';
-                content += "<strong>Password:</strong> " + maskedPwd + "<br>";
-                content += "<strong>Status:</strong> " + String(wifiCreds.isConfigured ? "Configured" : "Not Configured") + "";
-                content += "</div>";
+            WiFiNetworkList networkList = loadWiFiNetworks();
+            content += "<h3>Stored WiFi Networks</h3>";
+            content += "<p style='font-size:13px;color:#666;'>Networks are ordered by priority (top = highest priority). Maximum 5 networks.</p>";
+            
+            if (networkList.count > 0) {
+                for (int i = 0; i < networkList.count; i++) {
+                    content += "<div style='background:#e2e3e5;color:#383d41;padding:10px;margin:10px 0;border-radius:5px;display:flex;justify-content:space-between;align-items:center;'>";
+                    content += "<div>";
+                    content += "<strong>Priority " + String(i + 1) + ":</strong> " + String(networkList.networks[i].ssid) + "<br>";
+                    String maskedPwd = "";
+                    for (size_t j = 0; j < strlen(networkList.networks[i].password); ++j) maskedPwd += '*';
+                    content += "<small>Password: " + maskedPwd + "</small>";
+                    content += "</div>";
+                    content += "<div style='display:flex;gap:5px;'>";
+                    if (i > 0) {
+                        content += "<button onclick='moveNetwork(" + String(i) + ", -1)' style='padding:5px 10px;background:#007bff;color:white;border:none;border-radius:3px;cursor:pointer;'>↑</button>";
+                    }
+                    if (i < networkList.count - 1) {
+                        content += "<button onclick='moveNetwork(" + String(i) + ", 1)' style='padding:5px 10px;background:#007bff;color:white;border:none;border-radius:3px;cursor:pointer;'>↓</button>";
+                    }
+                    content += "<button onclick='deleteNetwork(" + String(i) + ")' style='padding:5px 10px;background:#dc3545;color:white;border:none;border-radius:3px;cursor:pointer;'>Delete</button>";
+                    content += "</div>";
+                    content += "</div>";
+                }
             } else {
                 content += "<div style='background:#f8d7da;color:#721c24;padding:10px;margin:10px 0;border-radius:5px;'>";
-                content += "No WiFi credentials stored";
+                content += "No WiFi networks stored";
                 content += "</div>";
             }
         }
         
-        // WiFi connect form
-        content += "<form method='POST' action='/save-wifi' onsubmit=\"return validateWifiForm()\">";
-        content += "<div class='form-group'><label>Network Name (SSID):</label>";
-        content += "<input type='text' name='ssid' placeholder='Enter WiFi network name' required></div>";
-        content += "<div class='form-group'><label>Password:</label>";
-        content += "<input type='password' name='password' placeholder='Enter WiFi password'></div>";
-        content += "<p style='font-size:12px;color:#666;margin-top:-8px;'>SSID: 1–31 characters, Password: 0–63 characters</p>";
-        content += "<button type='submit'>Connect to WiFi</button>";
-        content += "</form>";
+        // WiFi add form
+        content += "<h3>" + String(loadWiFiNetworks().count >= MAX_WIFI_NETWORKS ? "Network List Full" : "Add WiFi Network") + "</h3>";
+        if (loadWiFiNetworks().count >= MAX_WIFI_NETWORKS) {
+            content += "<div style='background:#fff3cd;padding:10px;margin:10px 0;border-radius:5px;'>";
+            content += "<p>Maximum of " + String(MAX_WIFI_NETWORKS) + " networks reached. Delete a network to add a new one.</p>";
+            content += "</div>";
+        } else {
+            content += "<form method='POST' action='/save-wifi' onsubmit=\"return validateWifiForm()\">";
+            content += "<div class='form-group'><label>Network Name (SSID):</label>";
+            content += "<input type='text' name='ssid' placeholder='Enter WiFi network name' required></div>";
+            content += "<div class='form-group'><label>Password:</label>";
+            content += "<input type='password' name='password' placeholder='Enter WiFi password'></div>";
+            content += "<p style='font-size:12px;color:#666;margin-top:-8px;'>SSID: 1–31 characters, Password: 0–63 characters</p>";
+            content += "<button type='submit'>Add Network</button>";
+            content += "</form>";
+        }
         
         // IP Address Vibration Explanation
         content += "<div style='background:#e7f3ff;padding:15px;margin:15px 0;border-radius:5px;border:1px solid #b3d9ff;'>";
@@ -715,6 +736,16 @@ void handleClient(WiFiClient& client) {
         content += "  if(ssid.length<1||ssid.length>31){alert('SSID must be between 1 and 31 characters.');return false;}";
         content += "  if(pwd.length>63){alert('Password must be 63 characters or fewer.');return false;}";
         content += "  return true;";
+        content += "}";
+        content += "function moveNetwork(index, direction){";
+        content += "  if(confirm('Move network ' + (direction < 0 ? 'up' : 'down') + '?')){";
+        content += "    window.location.href='/move-network?index='+index+'&direction='+direction;";
+        content += "  }";
+        content += "}";
+        content += "function deleteNetwork(index){";
+        content += "  if(confirm('Delete this network? The device will restart.')){";
+        content += "    window.location.href='/delete-network?index='+index;";
+        content += "  }";
         content += "}";
         content += "function scanNetworks() {";
         content += "  fetch('/scan-wifi').then(r=>r.json()).then(data=>{";
@@ -1357,34 +1388,52 @@ void handleClient(WiFiClient& client) {
         }
         
         if (strlen(newCreds.ssid) > 0) {
-            newCreds.isConfigured = true;
+            // Load current network list
+            WiFiNetworkList networkList = loadWiFiNetworks();
             
-            // Debug output before saving
-            Serial.println("=== WEBSERVER SAVE DEBUG ===");
-            Serial.print("About to save - SSID: '");
-            Serial.print(newCreds.ssid);
-            Serial.println("'");
-            // Do not print raw passwords to serial
-            Serial.println("About to save - Password: [hidden]");
-            Serial.print("About to save - isConfigured: ");
-            Serial.println(newCreds.isConfigured ? "true" : "false");
+            // Check if network already exists
+            bool networkExists = false;
+            for (int i = 0; i < networkList.count; i++) {
+                if (strcmp(networkList.networks[i].ssid, newCreds.ssid) == 0) {
+                    // Update password if network exists
+                    strncpy(networkList.networks[i].password, newCreds.password, sizeof(networkList.networks[i].password) - 1);
+                    networkList.networks[i].password[sizeof(networkList.networks[i].password) - 1] = '\0';
+                    networkExists = true;
+                    Serial.println("Updated existing network");
+                    break;
+                }
+            }
             
-            saveWiFiCredentials(newCreds);
+            if (!networkExists) {
+                // Add new network if space available
+                if (networkList.count < MAX_WIFI_NETWORKS) {
+                    int newIndex = networkList.count;
+                    strncpy(networkList.networks[newIndex].ssid, newCreds.ssid, sizeof(networkList.networks[newIndex].ssid) - 1);
+                    networkList.networks[newIndex].ssid[sizeof(networkList.networks[newIndex].ssid) - 1] = '\0';
+                    strncpy(networkList.networks[newIndex].password, newCreds.password, sizeof(networkList.networks[newIndex].password) - 1);
+                    networkList.networks[newIndex].password[sizeof(networkList.networks[newIndex].password) - 1] = '\0';
+                    networkList.networks[newIndex].priority = networkList.count; // New network gets lowest priority
+                    networkList.count++;
+                    Serial.print("Added new network at index ");
+                    Serial.println(newIndex);
+                } else {
+                    String content = "<div style='background:#f8d7da;color:#721c24;padding:15px;margin:15px 0;border-radius:5px;'>Error: Maximum of " + String(MAX_WIFI_NETWORKS) + " networks reached. Delete a network first.</div>";
+                    content += "<p><a href='/wifi-setup'>Back to WiFi Setup</a></p>";
+                    response = generateHTML("WiFi Setup Error", content);
+                    client.println("HTTP/1.1 200 OK");
+                    client.println("Content-Type: text/html");
+                    client.println("Connection: close");
+                    client.println();
+                    client.println(response);
+                    return;
+                }
+            }
             
-            // Verify save by reading back
-            Serial.println("=== VERIFYING SAVE ===");
-            WiFiCredentials verifyData = loadWiFiCredentials();
-            Serial.print("Verification - SSID: '");
-            Serial.print(verifyData.ssid);
-            Serial.println("'");
-            // Do not print raw passwords to serial
-            Serial.println("Verification - Password: [hidden]");
-            Serial.print("Verification - isConfigured: ");
-            Serial.println(verifyData.isConfigured ? "true" : "false");
-            Serial.println("=== END VERIFICATION ===");
+            // Save the updated network list
+            saveWiFiNetworks(networkList);
             
-            String content = "<div class='status'>WiFi credentials saved! Device will restart and attempt to connect.</div>";
-            content += "<p>If connection fails, the device will start hotspot mode again after 10 seconds.</p>";
+            String content = "<div class='status'>WiFi network saved! Device will restart and attempt to connect.</div>";
+            content += "<p>If connection fails, the device will try other stored networks or start hotspot mode after 10 seconds.</p>";
             content += "<p><a href='/'>Back to Dashboard</a></p>";
             response = generateHTML("WiFi Saved", content);
             
@@ -1408,6 +1457,92 @@ void handleClient(WiFiClient& client) {
             content += "<p><a href='/wifi-setup'>Back to WiFi Setup</a></p>";
             response = generateHTML("WiFi Setup Error", content);
         }
+        
+    } else if (request.indexOf("GET /move-network") >= 0) {
+        // Move network priority
+        int indexStart = request.indexOf("index=");
+        int directionStart = request.indexOf("direction=");
+        
+        if (indexStart >= 0 && directionStart >= 0) {
+            int index = request.substring(indexStart + 6, request.indexOf(" ", indexStart)).toInt();
+            int direction = request.substring(directionStart + 10, request.indexOf(" ", directionStart)).toInt();
+            
+            WiFiNetworkList networkList = loadWiFiNetworks();
+            
+            if (index >= 0 && index < networkList.count) {
+                int swapIndex = index + direction;
+                if (swapIndex >= 0 && swapIndex < networkList.count) {
+                    // Swap the two networks
+                    WiFiNetwork temp = networkList.networks[index];
+                    networkList.networks[index] = networkList.networks[swapIndex];
+                    networkList.networks[swapIndex] = temp;
+                    
+                    // Update priorities
+                    networkList.networks[index].priority = index;
+                    networkList.networks[swapIndex].priority = swapIndex;
+                    
+                    saveWiFiNetworks(networkList);
+                    Serial.print("Moved network from index ");
+                    Serial.print(index);
+                    Serial.print(" to ");
+                    Serial.println(swapIndex);
+                }
+            }
+        }
+        
+        // Redirect back to WiFi setup
+        client.println("HTTP/1.1 302 Found");
+        client.println("Location: /wifi-setup");
+        client.println("Connection: close");
+        client.println();
+        return;
+        
+    } else if (request.indexOf("GET /delete-network") >= 0) {
+        // Delete network
+        int indexStart = request.indexOf("index=");
+        
+        if (indexStart >= 0) {
+            int index = request.substring(indexStart + 6, request.indexOf(" ", indexStart)).toInt();
+            
+            WiFiNetworkList networkList = loadWiFiNetworks();
+            
+            if (index >= 0 && index < networkList.count) {
+                Serial.print("Deleting network at index ");
+                Serial.println(index);
+                
+                // Shift all networks after this one down
+                for (int i = index; i < networkList.count - 1; i++) {
+                    networkList.networks[i] = networkList.networks[i + 1];
+                    networkList.networks[i].priority = i;
+                }
+                networkList.count--;
+                
+                saveWiFiNetworks(networkList);
+                
+                String content = "<div class='status'>Network deleted! Device will restart.</div>";
+                content += "<p><a href='/wifi-setup'>Back to WiFi Setup</a></p>";
+                response = generateHTML("Network Deleted", content);
+                
+                client.println("HTTP/1.1 200 OK");
+                client.println("Content-Type: text/html");
+                client.println("Connection: close");
+                client.println();
+                client.println(response);
+                client.stop();
+                
+                // Restart to apply changes
+                delay(1000);
+                ESP.restart();
+                return;
+            }
+        }
+        
+        // Redirect back to WiFi setup if invalid index
+        client.println("HTTP/1.1 302 Found");
+        client.println("Location: /wifi-setup");
+        client.println("Connection: close");
+        client.println();
+        return;
         
     } else {
         // 404 Not Found - but redirect to wifi-setup if in hotspot mode
